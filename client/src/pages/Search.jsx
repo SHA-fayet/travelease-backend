@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import PackageCard from "./PackageCard";
+import SingleCard from "./components/SingleCard";
 
 const Search = () => {
   const navigate = useNavigate();
@@ -145,7 +145,7 @@ const Search = () => {
               <option value="createdAt_asc">Oldest</option>
             </select>
           </div>
-          <button className="bg-slate-700 rounded-lg text-white p-3 uppercase hover:opacity-95">
+          <button className="bg-[#EB662B] rounded-lg text-white p-3 uppercase hover:opacity-95">
             Search
           </button>
         </form>
@@ -155,7 +155,7 @@ const Search = () => {
         <h1 className="text-xl font-semibold border-b p-3 text-slate-700 mt-5">
           Package Results:
         </h1>
-        <div className="w-full p-5 grid 2xl:grid-cols-4 xlplus:grid-cols-3 lg:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 my-1">
           {!loading && allPackages.length === 0 && (
             <p className="text-xl text-slate-700">No Packages Found!</p>
           )}
@@ -167,7 +167,7 @@ const Search = () => {
           {!loading &&
             allPackages &&
             allPackages.map((packageData, i) => (
-              <PackageCard key={i} packageData={packageData} />
+              <SingleCard key={i} packageData={packageData} />
             ))}
         </div>
         {showMoreBtn && (

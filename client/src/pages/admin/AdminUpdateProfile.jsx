@@ -8,7 +8,9 @@ import {
   updatePassSuccess,
   updatePassFailure,
 } from "../../redux/user/userSlice";
-
+import { toast } from "react-toastify";
+import axios from "axios";
+import { FiUpload } from "react-icons/fi";
 const AdminUpdateProfile = () => {
   const { currentUser, loading, error } = useSelector((state) => state.user);
   const dispatch = useDispatch();
@@ -18,8 +20,21 @@ const AdminUpdateProfile = () => {
     username: "",
     address: "",
     phone: "",
-    avatar: "",
   });
+
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState("");
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    setAvatarFile(file);
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
   const [updatePassword, setUpdatePassword] = useState({
     oldpassword: "",
     newpassword: "",
@@ -39,53 +54,58 @@ const AdminUpdateProfile = () => {
   const handleChange = (e) => {
     setFormData({
       ...formData,
-      [e.target.id]: e.target.value,
+      [e.target.name]: e.target.value,
     });
   };
 
   const handlePass = (e) => {
     setUpdatePassword({
       ...updatePassword,
-      [e.target.id]: e.target.value,
+      [e.target.name]: e.target.value,
     });
   };
 
   const updateUserDetails = async (e) => {
     e.preventDefault();
+
     if (
+      !avatarFile &&
       currentUser.username === formData.username &&
       currentUser.address === formData.address &&
       currentUser.phone === formData.phone
     ) {
-      alert("Change atleast 1 field to update details");
+      toast.error("Change at least 1 field to update details");
       return;
     }
+
     try {
       dispatch(updateUserStart());
-      const res = await fetch(`/api/user/update/${currentUser._id}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      });
-      const data = await res.json();
-      if (data.success === false && res.status !== 201 && res.status !== 200) {
-        dispatch(updateUserSuccess());
-        dispatch(updateUserFailure(data?.messsage));
-        alert("Session Ended! Please login again");
-        navigate("/login");
-        return;
+
+      const updatedForm = new FormData();
+      updatedForm.append("username", formData.username);
+      updatedForm.append("address", formData.address);
+      updatedForm.append("phone", formData.phone);
+      if (avatarFile) {
+        updatedForm.append("avatar", avatarFile);
       }
-      if (data.success && res.status === 201) {
-        alert(data?.message);
-        dispatch(updateUserSuccess(data?.user));
-        return;
+
+      const res = await axios.post(
+        `/api/user/update/${currentUser._id}`,
+        updatedForm
+      );
+
+      const data = res.data;
+      if (data.success) {
+        toast.success(data.message);
+        dispatch(updateUserSuccess(data.user));
+      } else {
+        dispatch(updateUserFailure(data.message));
+        toast.error(data.message);
       }
-      alert(data?.message);
-      return;
     } catch (error) {
       console.log(error);
+      dispatch(updateUserFailure("Something went wrong"));
+      toast.error("Something went wrong");
     }
   };
 
@@ -95,11 +115,11 @@ const AdminUpdateProfile = () => {
       updatePassword.oldpassword === "" ||
       updatePassword.newpassword === ""
     ) {
-      alert("Enter a valid password");
+      toast.error("Enter a valid password");
       return;
     }
     if (updatePassword.oldpassword === updatePassword.newpassword) {
-      alert("New password can't be same!");
+      toast.error("New password can't be same!");
       return;
     }
     try {
@@ -115,12 +135,12 @@ const AdminUpdateProfile = () => {
       if (data.success === false && res.status !== 201 && res.status !== 200) {
         dispatch(updateUserSuccess());
         dispatch(updatePassFailure(data?.message));
-        alert("Session Ended! Please login again");
+        toast.error("Session Ended! Please login again");
         navigate("/login");
         return;
       }
       dispatch(updatePassSuccess());
-      alert(data?.message);
+      toast(data?.message);
       setUpdatePassword({
         oldpassword: "",
         newpassword: "",
@@ -132,117 +152,143 @@ const AdminUpdateProfile = () => {
   };
 
   return (
-    <div
-      className={`updateProfile w-full p-3 m-1 transition-all duration-300 flex justify-center`}
-    >
-      {updateProfileDetailsPanel === true ? (
-        <div className="flex flex-col border self-center shadow-2xl border-gray-400 rounded-lg p-2 w-72 h-fit gap-2 sm:w-[320px]">
-          <h1 className="text-2xl text-center font-semibold">Update Profile</h1>
-          <div className="flex flex-col">
-            <label htmlFor="username" className="font-semibold">
-              Username:
-            </label>
-            <input
-              type="text"
-              id="username"
-              className="p-1 rounded border border-black"
-              value={formData.username}
-              onChange={handleChange}
-            />
-          </div>
-          <div className="flex flex-col">
-            <label htmlFor="address" className="font-semibold">
-              Address:
-            </label>
-            <textarea
-              maxLength={200}
-              type="text"
-              id="address"
-              className="p-1 rounded border border-black resize-none"
-              value={formData.address}
-              onChange={handleChange}
-            />
-          </div>
-          <div className="flex flex-col">
-            <label htmlFor="phone" className="font-semibold">
-              Phone:
-            </label>
-            <input
-              type="text"
-              id="phone"
-              className="p-1 rounded border border-black"
-              value={formData.phone}
-              onChange={handleChange}
-            />
-          </div>
-          <button
-            disabled={loading}
-            onClick={updateUserDetails}
-            className="p-2 text-white bg-slate-700 rounded hover:opacity-95"
-          >
-            {loading ? "Loading..." : "Update"}
-          </button>
-          <button
-            disabled={loading}
-            type="button"
-            onClick={() => setUpdateProfileDetailsPanel(false)}
-            className="p-2 text-white bg-red-700 rounded hover:opacity-95"
-          >
-            {loading ? "Loading..." : "Change Password"}
-          </button>
+    <div className="w-full h-[90vh] flex items-center  bg-[#EB662B] rounded-md">
+      <div className="w-[90%] bg-white md:w-[60%] mx-auto flex flex-col gap-6 rounded-md shadow-lg">
+        <h1 className="text-center text-lg mt-6 font-medium md:text-3xl md:font-bold text-gray-800">
+          {updateProfileDetailsPanel ? (
+            <>
+              Update <span className="text-[#EB662B]">Profile</span>
+            </>
+          ) : (
+            <>
+              Change <span className="text-[#6358DC]">Password</span>
+            </>
+          )}
+        </h1>
+
+        <div className="flex flex-col gap-5 p-6">
+          {updateProfileDetailsPanel ? (
+            <form className="w-full space-y-4">
+              <div className="flex items-center gap-3">
+                <label
+                  htmlFor="avatarUpload"
+                  className="cursor-pointer flex items-center gap-2 text-blue-600"
+                >
+                  <FiUpload />
+                  Upload Avatar
+                </label>
+                <input
+                  type="file"
+                  id="avatarUpload"
+                  onChange={handleFileChange}
+                  accept="image/*"
+                  className="hidden"
+                />
+                {avatarPreview && (
+                  <img
+                    src={avatarPreview}
+                    alt="Preview"
+                    className="w-12 h-12 object-cover rounded-full border"
+                  />
+                )}
+              </div>
+              <div>
+                <label className="font-medium">Username</label>
+                <input
+                  type="text"
+                  name="username"
+                  value={formData.username}
+                  onChange={handleChange}
+                  className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none"
+                  placeholder="Your Username"
+                />
+              </div>
+              <div>
+                <label className="font-medium">Address</label>
+                <textarea
+                  name="address"
+                  value={formData.address}
+                  onChange={handleChange}
+                  maxLength={200}
+                  className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none resize-none"
+                  placeholder="Your Address"
+                />
+              </div>
+              <div>
+                <label className="font-medium">Phone</label>
+                <input
+                  type="text"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none"
+                  placeholder="Your Phone"
+                />
+              </div>
+              <button
+                disabled={loading}
+                onClick={updateUserDetails}
+                type="button"
+                className="w-full bg-[#EB662B] text-white p-3 rounded-md hover:opacity-90"
+              >
+                {loading ? "Loading..." : "Update"}
+              </button>
+              <button
+                disabled={loading}
+                type="button"
+                onClick={() => setUpdateProfileDetailsPanel(false)}
+                className="w-full bg-red-600 text-white p-3 rounded-md hover:opacity-90"
+              >
+                {loading ? "Loading..." : "Change Password"}
+              </button>
+            </form>
+          ) : (
+            <form className="w-full space-y-4">
+              <div>
+                <label className="font-medium">Old Password</label>
+                <input
+                  type="password"
+                  name="oldpassword"
+                  value={updatePassword.oldpassword}
+                  onChange={handlePass}
+                  className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none"
+                  placeholder="Enter old password"
+                />
+              </div>
+              <div>
+                <label className="font-medium">New Password</label>
+                <input
+                  type="password"
+                  name="newpassword"
+                  value={updatePassword.newpassword}
+                  onChange={handlePass}
+                  className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none"
+                  placeholder="Enter new password"
+                />
+              </div>
+              <button
+                disabled={loading}
+                onClick={updateUserPassword}
+                type="button"
+                className="w-full bg-[#6358DC] text-white p-3 rounded-md hover:opacity-90"
+              >
+                {loading ? "Loading..." : "Update Password"}
+              </button>
+              <button
+                disabled={loading}
+                type="button"
+                onClick={() => {
+                  setUpdateProfileDetailsPanel(true);
+                  setUpdatePassword({ oldpassword: "", newpassword: "" });
+                }}
+                className="w-full bg-red-600 text-white p-3 rounded-md hover:opacity-90"
+              >
+                {loading ? "Loading..." : "Back"}
+              </button>
+            </form>
+          )}
         </div>
-      ) : (
-        <div className="flex flex-col border shadow-2xl border-gray-400 rounded-lg p-2 w-72 h-fit gap-2 sm:w-[320px]">
-          <h1 className="text-2xl text-center font-semibold">
-            Change Password
-          </h1>
-          <div className="flex flex-col">
-            <label htmlFor="username" className="font-semibold">
-              Enter old password:
-            </label>
-            <input
-              type="text"
-              id="oldpassword"
-              className="p-1 rounded border border-black"
-              value={updatePassword.oldpassword}
-              onChange={handlePass}
-            />
-          </div>
-          <div className="flex flex-col">
-            <label htmlFor="username" className="font-semibold">
-              Enter new password:
-            </label>
-            <input
-              type="text"
-              id="newpassword"
-              className="p-1 rounded border border-black"
-              value={updatePassword.newpassword}
-              onChange={handlePass}
-            />
-          </div>
-          <button
-            disabled={loading}
-            onClick={updateUserPassword}
-            className="p-2 text-white bg-slate-700 rounded hover:opacity-95"
-          >
-            {loading ? "Loading..." : "Update Password"}
-          </button>
-          <button
-            disabled={loading}
-            onClick={() => {
-              setUpdateProfileDetailsPanel(true);
-              setUpdatePassword({
-                oldpassword: "",
-                newpassword: "",
-              });
-            }}
-            type="button"
-            className="p-2 text-white bg-red-700 rounded hover:opacity-95 w-24"
-          >
-            {loading ? "Loading..." : "Back"}
-          </button>
-        </div>
-      )}
+      </div>
     </div>
   );
 };

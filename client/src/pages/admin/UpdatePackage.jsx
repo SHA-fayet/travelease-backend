@@ -1,13 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { app } from "../../firebase";
-import {
-  getDownloadURL,
-  getStorage,
-  ref,
-  uploadBytesResumable,
-} from "firebase/storage";
 import { useNavigate, useParams } from "react-router";
-
+import { toast } from "react-toastify";
 const UpdatePackage = () => {
   const params = useParams();
   const navigate = useNavigate();
@@ -26,10 +19,7 @@ const UpdatePackage = () => {
     packageOffer: false,
     packageImages: [],
   });
-  const [images, setImages] = useState([]);
-  const [imageUploadError, setImageUploadError] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [imageUploadPercent, setImageUploadPercent] = useState(0);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 
@@ -55,7 +45,7 @@ const UpdatePackage = () => {
           packageImages: data?.packageData?.packageImages,
         });
       } else {
-        alert(data?.message || "Something went wrong!");
+        toast.error(data?.message || "Something went wrong!");
       }
     } catch (error) {
       console.log(error);
@@ -72,75 +62,26 @@ const UpdatePackage = () => {
     }
   };
 
-  const handleImageSubmit = () => {
-    if (
-      images.length > 0 &&
-      images.length + formData.packageImages.length < 6
-    ) {
-      setUploading(true);
-      setImageUploadError(false);
-      const promises = [];
+  const handleFile = (e) => {
+    const selectedFiles = Array.from(e.target.files);
+    const totalImages =
+      selectedFiles.length + images.length + formData.packageImages.length;
 
-      for (let i = 0; i < images.length; i++) {
-        promises.push(storeImage(images[i]));
-      }
-      Promise.all(promises)
-        .then((urls) => {
-          setFormData({
-            ...formData,
-            packageImages: formData.packageImages.concat(urls),
-          });
-          setImageUploadError(false);
-          setUploading(false);
-        })
-        .catch((err) => {
-          setImageUploadError("Image upload failed (2mb max per image)");
-          setUploading(false);
-        });
-    } else {
-      setImageUploadError("You can only upload 5 images per package");
-      setUploading(false);
+    if (totalImages > 10) {
+      toast.error("You can only upload 10 images per package");
+      return;
     }
-  };
-
-  const storeImage = async (file) => {
-    return new Promise((resolve, reject) => {
-      const storage = getStorage(app);
-      const fileName = new Date().getTime() + file.name;
-      const storageRef = ref(storage, fileName);
-      const uploadTask = uploadBytesResumable(storageRef, file);
-      uploadTask.on(
-        "state_changed",
-        (snapshot) => {
-          const progress =
-            (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          setImageUploadPercent(Math.floor(progress));
-        },
-        (error) => {
-          reject(error);
-        },
-        () => {
-          getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
-            resolve(downloadURL);
-          });
-        }
-      );
-    });
-  };
-
-  const handleDeleteImage = (index) => {
-    setFormData({
-      ...formData,
-      packageImages: formData.packageImages.filter((_, i) => i !== index),
-    });
+    setImages((prev) => [...prev, ...selectedFiles]);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     if (formData.packageImages.length === 0) {
-      alert("You must upload atleast 1 image");
+      toast.error("You must upload at least 1 image");
       return;
     }
+
     if (
       formData.packageName === "" ||
       formData.packageDescription === "" ||
@@ -151,44 +92,60 @@ const UpdatePackage = () => {
       formData.packageActivities === "" ||
       formData.packagePrice === 0
     ) {
-      alert("All fields are required!");
+      toast.error("All fields are required!");
       return;
     }
-    if (formData.packagePrice < 0) {
-      alert("Price should be greater than 500!");
+
+    if (formData.packagePrice < 500) {
+      toast.error("Price should be greater than 500!");
       return;
     }
-    if (formData.packageDiscountPrice >= formData.packagePrice) {
-      alert("Regular Price should be greater than Discount Price!");
+
+    if (
+      formData.packageOffer &&
+      formData.packageDiscountPrice >= formData.packagePrice
+    ) {
+      toast.error("Regular Price should be greater than Discount Price!");
       return;
     }
-    if (formData.packageOffer === false) {
-      setFormData({ ...formData, packageDiscountPrice: 0 });
-    }
+
     try {
       setLoading(true);
       setError(false);
 
-      const res = await fetch(`/api/package/update-package/${params?.id}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
+      const form = new FormData();
+
+      // Append non-file fields
+      Object.entries(formData).forEach(([key, value]) => {
+        if (key !== "packageImages") {
+          form.append(key, value);
+        }
       });
+
+      // Append file objects
+      formData.packageImages.forEach((image) => {
+        form.append("packageImages", image); // Must match Multer field name
+      });
+
+      const res = await fetch(`/api/package/update-package/${params?.id}`, {
+        method: "POST", // or POST if you prefer
+        body: form,
+      });
+
       const data = await res.json();
+
       if (data?.success === false) {
         setError(data?.message);
-        setLoading(false);
+      } else {
+        toast.success(data?.message || "Package updated successfully!");
+        navigate(`/package/${params?.id}`);
       }
+
       setLoading(false);
-      setError(false);
-      alert(data?.message);
-      // getPackageData();
-      // setImages([]);
-      navigate(`/package/${params?.id}`);
     } catch (err) {
       console.log(err);
+      setLoading(false);
+      setError("Something went wrong!");
     }
   };
 
@@ -197,206 +154,190 @@ const UpdatePackage = () => {
       <div className="w-full flex flex-wrap justify-center gap-2 p-6">
         <form
           onSubmit={handleSubmit}
-          className="w-full sm:w-[60%] shadow-md rounded-xl p-3 gap-2 flex flex-col items-center"
+          className="w-full sm:w-[60%] space-y-4 shadow-md rounded-xl p-4 bg-white"
         >
           <h1 className="text-center text-2xl font-semibold">Update Package</h1>
-          <div className="flex flex-col w-full">
-            <label htmlFor="packageName">Name:</label>
+
+          <div>
+            <label className="font-medium">Name</label>
             <input
               type="text"
-              className="border border-black rounded"
               id="packageName"
-              value={formData?.packageName}
+              value={formData.packageName}
               onChange={handleChange}
+              className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none"
             />
           </div>
-          <div className="flex flex-col w-full">
-            <label htmlFor="packageDescription">Description:</label>
+
+          <div>
+            <label className="font-medium">Description</label>
             <textarea
-              type="text"
-              className="border border-black rounded resize-none"
               id="packageDescription"
               value={formData.packageDescription}
               onChange={handleChange}
+              className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none "
             />
           </div>
-          <div className="flex flex-col w-full">
-            <label htmlFor="packageDestination">Destination:</label>
+
+          <div>
+            <label className="font-medium">Destination</label>
             <input
               type="text"
-              className="border border-black rounded"
               id="packageDestination"
               value={formData.packageDestination}
               onChange={handleChange}
+              className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none"
             />
           </div>
-          <div className="flex flex-wrap w-full gap-2">
-            <div className="flex flex-col flex-1">
-              <label htmlFor="packageDays">Days:</label>
+
+          <div className="flex flex-wrap gap-4">
+            <div className="flex-1">
+              <label className="font-medium">Days</label>
               <input
                 type="number"
-                className="border border-black rounded"
                 id="packageDays"
                 value={formData.packageDays}
                 onChange={handleChange}
+                className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none"
               />
             </div>
-            <div className="flex flex-col flex-1">
-              <label htmlFor="packageNights">Nights:</label>
+            <div className="flex-1">
+              <label className="font-medium">Nights</label>
               <input
                 type="number"
-                className="border border-black rounded"
                 id="packageNights"
                 value={formData.packageNights}
                 onChange={handleChange}
+                className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none"
               />
             </div>
           </div>
-          <div className="flex flex-col w-full">
-            <label htmlFor="packageAccommodation">Accommodation:</label>
+
+          <div>
+            <label className="font-medium">Accommodation</label>
             <textarea
-              type="text"
-              className="border border-black rounded resize-none"
               id="packageAccommodation"
               value={formData.packageAccommodation}
               onChange={handleChange}
+              className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none "
             />
           </div>
-          <div className="flex flex-col w-full">
-            <label htmlFor="packageTransportation">
-              Transportation:(Selected:{formData?.packageTransportation})
+
+          <div>
+            <label className="font-medium">
+              Transportation (Selected: {formData?.packageTransportation})
             </label>
             <select
-              className="border border-black rounded-lg"
               id="packageTransportation"
+              value={formData.packageTransportation}
               onChange={handleChange}
+              className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none"
             >
-              <option value={formData?.packageTransportation}>Select</option>
-              <option>Flight</option>
-              <option>Train</option>
-              <option>Boat</option>
-              <option>Other</option>
+              <option value="">Select</option>
+              <option value="Flight">Flight</option>
+              <option value="Train">Train</option>
+              <option value="Boat">Boat</option>
+              <option value="Other">Other</option>
             </select>
           </div>
-          <div className="flex flex-col w-full">
-            <label htmlFor="packageMeals">Meals:</label>
+
+          <div>
+            <label className="font-medium">Meals</label>
             <textarea
-              type="text"
-              className="border border-black rounded resize-none"
               id="packageMeals"
               value={formData.packageMeals}
               onChange={handleChange}
+              className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none resize-none"
             />
           </div>
-          <div className="flex flex-col w-full">
-            <label htmlFor="packageActivities">Activities:</label>
+
+          <div>
+            <label className="font-medium">Activities</label>
             <textarea
-              type="text"
-              className="border border-black rounded resize-none"
               id="packageActivities"
               value={formData.packageActivities}
               onChange={handleChange}
+              className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none resize-none"
             />
           </div>
-          <div className="flex flex-col w-full">
-            <label htmlFor="packagePrice">Price:</label>
+
+          <div>
+            <label className="font-medium">Price</label>
             <input
               type="number"
-              className="border border-black rounded"
               id="packagePrice"
               value={formData.packagePrice}
               onChange={handleChange}
+              className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none"
             />
           </div>
-          <div className="flex items-center gap-2 w-full">
-            <label htmlFor="packageOffer">Offer:</label>
+
+          <div className="flex items-center gap-2">
+            <label className="font-medium" htmlFor="packageOffer">
+              Offer
+            </label>
             <input
               type="checkbox"
-              className="border border-black rounded w-4 h-4"
               id="packageOffer"
               checked={formData?.packageOffer}
               onChange={handleChange}
+              className="w-5 h-5"
             />
           </div>
-          <div
-            className={`${
-              formData.packageOffer ? "flex flex-col w-full" : "hidden"
-            }`}
-          >
-            <label htmlFor="packageDiscountPrice">Discount Price:</label>
-            <input
-              type="number"
-              className="border border-black rounded"
-              id="packageDiscountPrice"
-              value={formData.packageDiscountPrice}
-              onChange={handleChange}
-            />
-          </div>
-          {imageUploadError ||
-            (error && (
-              <span className="text-red-600 w-full">
-                {imageUploadError || error}
-              </span>
-            ))}
-          <button
-            disabled={uploading || loading}
-            className="bg-green-700 p-3 rounded text-white hover:opacity-95 disabled:opacity-80 w-full"
-          >
-            {uploading
-              ? "Uploading..."
-              : loading
-              ? "Loading..."
-              : "Update Package"}
+
+          {formData.packageOffer && (
+            <div>
+              <label className="font-medium">Discount Price</label>
+              <input
+                type="number"
+                id="packageDiscountPrice"
+                value={formData.packageDiscountPrice}
+                onChange={handleChange}
+                className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none"
+              />
+            </div>
+          )}
+
+          <button className="w-full bg-[#EB662B] text-white p-3 rounded-md hover:opacity-90 disabled:opacity-80">
+            {loading ? "Loading..." : "Update Package"}
           </button>
         </form>
-        <div className="w-full sm:w-[30%] shadow-md rounded-xl p-3 h-max flex flex-col gap-2">
-          <div className="flex flex-col w-full">
-            <label htmlFor="packageImages">
+
+        {/* Image Upload Section */}
+        <div className="w-full sm:w-[30%] space-y-4 shadow-md rounded-xl p-4 bg-white">
+          {/* <div>
+            <label className="font-medium" htmlFor="packageImages">
               Images:
-              <span className="text-red-700 text-sm">
-                (images size should be less than 2mb and max 5 images)
+              <span className="text-red-700 text-sm block">
+                (images size should be less than 2MB and max 10 images)
               </span>
             </label>
             <input
               type="file"
-              className="border border-black rounded"
               id="packageImages"
               multiple
-              onChange={(e) => setImages(e.target.files)}
+              accept="image/*" // ✅ Optional: restrict to images only
+              onChange={handleFile} // ✅ Updated handler
+              className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none"
             />
-          </div>
+          </div> */}
+
           {formData?.packageImages?.length > 0 && (
-            <div className="p-3 w-full flex flex-col justify-center">
-              {formData.packageImages.map((image, i) => {
-                return (
-                  <div
-                    key={i}
-                    className="shadow-xl rounded-lg p-1 flex flex-wrap my-2 justify-between"
-                  >
-                    <img src={image} alt="" className="h-20 w-20 rounded" />
-                    <button
-                      onClick={() => handleDeleteImage(i)}
-                      className="p-2 text-red-500 hover:cursor-pointer hover:underline"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                );
-              })}
+            <div className="space-y-2">
+              {formData.packageImages.map((image, i) => (
+                <div
+                  key={i}
+                  className="shadow-md rounded-md p-2 flex justify-between items-center"
+                >
+                  <img
+                    src={`http://localhost:8000/images/${image}`}
+                    alt=""
+                    className="h-20 w-20 rounded"
+                  />
+                </div>
+              ))}
             </div>
           )}
-          <button
-            disabled={uploading || loading || images.length === 0}
-            className="bg-green-700 p-3 rounded text-white hover:opacity-95 disabled:opacity-80 w-full"
-            type="button"
-            onClick={handleImageSubmit}
-          >
-            {uploading
-              ? `Uploading...(${imageUploadPercent}%)`
-              : loading
-              ? "Loading..."
-              : "Upload Images"}
-          </button>
         </div>
       </div>
     </>

@@ -1,47 +1,47 @@
-import aboutImg from "../assets/images/about_img.png";
-import { FaExternalLinkAlt } from "react-icons/fa";
+import { useNavigate } from "react-router-dom";
+import about from "../assets/images/about.jpg";
 
 const About = () => {
+  const navigate = useNavigate();
   return (
-    <div className="w-full flex justify-center">
-      <div className="w-[90%] max-w-2xl rounded-xl shadow-xl p-3 flex flex-col gap-3">
-        <h1 className="text-4xl text-center font-semibold">About</h1>
-        <div className="w-max flex flex-col">
-          <img src={aboutImg} className="w-40 h-40" alt="Image" />
-          <h1 className="text-xl font-semibold text-center">Sanjay NG</h1>
+    <div>
+      <section className="w-full bg-white py-12 px-4 md:px-16">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center gap-10">
+          {/* Left Image Section */}
+          <div className="w-full md:w-1/2">
+            <img
+              src={about}
+              alt="Travel adventure"
+              className="w-full h-full rounded-lg shadow-md object-contain"
+            />
+          </div>
+
+          {/* Right Text Section */}
+          <div className="w-full md:w-1/2 text-center md:text-left">
+            <h2 className="text-3xl font-bold text-[#EB662B] mb-4">
+              About Trevo
+            </h2>
+            <p className="text-gray-700 text-lg leading-relaxed">
+              At <span className="font-semibold text-[#EB662B]">Trevo</span>, we
+              believe that every journey should be unforgettable. Our mission is
+              to help you explore the world with ease and comfort — whether
+              you're looking for serene beaches, vibrant cities, or thrilling
+              adventures. With curated travel packages, local expertise, and
+              24/7 support, we make sure your travel dreams come true.
+            </p>
+            <p className="text-gray-700 mt-4">
+              Start your journey today with Trevo — where your adventure begins.
+            </p>
+            <button
+              onClick={() => navigate("/search")}
+              className="mt-12 px-6 py-3 bg-[#EB662B] text-white rounded-lg hover:opacity-90 transition-all duration-300"
+            >
+              Explore Tours
+            </button>
+          </div>
         </div>
-        <ul className="list-disc w-max mx-5">
-          <li className="hover:underline hover:text-blue-600 cursor-pointer">
-            <a
-              className="flex items-center gap-2"
-              href="https://github.com/Sanjayng125"
-              target="_blank"
-            >
-              Git-Hub <FaExternalLinkAlt />
-            </a>
-          </li>
-          <li className="hover:underline hover:text-blue-600 cursor-pointer">
-            <a
-              className="flex items-center gap-2"
-              href="https://linkedin.com/in/sanjay-ng-41b64922a"
-              target="_blank"
-            >
-              LinkedIn <FaExternalLinkAlt />
-            </a>
-          </li>
-        </ul>
-        <p>
-          Lorem ipsum dolor sit, amet consectetur adipisicing elit. Quidem
-          aliquam voluptatibus odit, saepe exercitationem autem molestias
-          asperiores dolores sit corrupti molestiae ea, facere, totam
-          necessitatibus enim quod aliquid. Quisquam, dolor. aliquam
-          voluptatibus odit, saepe exercitationem autem molestias asperiores
-          dolores sit corrupti molestiae ea, facere, totam necessitatibus enim
-          quod aliquid. Quisquam, dolor.
-        </p>
-      </div>
+      </section>
     </div>
   );
 };
-
 export default About;

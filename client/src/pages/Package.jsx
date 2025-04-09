@@ -1,24 +1,18 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Link } from "react-router-dom";
 import { Swiper, SwiperSlide } from "swiper/react";
 import SwiperCore from "swiper";
 import { Navigation } from "swiper/modules";
 import "swiper/css/bundle";
-import {
-  FaArrowDown,
-  FaArrowLeft,
-  FaArrowRight,
-  FaArrowUp,
-  FaClock,
-  FaMapMarkerAlt,
-  FaShare,
-} from "react-icons/fa";
 import Rating from "@mui/material/Rating";
 import { useSelector } from "react-redux";
 import RatingCard from "./RatingCard";
-
+import { toast } from "react-toastify";
+import MapModal from "./components/MapModal";
+import { Autoplay } from "swiper/modules";
+import { FaClock } from "react-icons/fa";
 const Package = () => {
+  const [showMap, setShowMap] = useState(false);
   SwiperCore.use([Navigation]);
   const { currentUser } = useSelector((state) => state.user);
   const params = useParams();
@@ -90,11 +84,11 @@ const Package = () => {
   const giveRating = async () => {
     checkRatingGiven();
     if (ratingGiven) {
-      alert("You already submittd your rating!");
+      toast.error("You already submittd your rating!");
       return;
     }
     if (ratingsData.rating === 0 && ratingsData.review === "") {
-      alert("Atleast 1 field is required!");
+      toast.error("Atleast 1 field is required!");
       return;
     }
     if (
@@ -102,7 +96,7 @@ const Package = () => {
       ratingsData.review === "" &&
       !ratingsData.userRef
     ) {
-      alert("All fields are required!");
+      toast.error("All fields are required!");
       return;
     }
     try {
@@ -117,13 +111,13 @@ const Package = () => {
       const data = await res.json();
       if (data?.success) {
         setLoading(false);
-        alert(data?.message);
+        toast.success(data?.message);
         getPackageData();
         getRatings();
         checkRatingGiven();
       } else {
         setLoading(false);
-        alert(data?.message || "Something went wrong!");
+        toast.error(data?.message || "Something went wrong!");
       }
     } catch (error) {
       console.log(error);
@@ -165,7 +159,6 @@ const Package = () => {
       checkRatingGiven();
     }
   }, [params.id, currentUser]);
-
   return (
     <div className="w-full">
       {loading && (
@@ -173,92 +166,23 @@ const Package = () => {
           Loading...
         </p>
       )}
-      {error && (
-        <div className="flex flex-col w-full items-center gap-2">
-          <p className="text-center text-red-700">Something went wrong!</p>
-          <Link
-            className="bg-slate-600 text-white p-3 py-2 rounded-lg w-min"
-            to="/"
-          >
-            Back
-          </Link>
-        </div>
-      )}
+
       {packageData && !loading && !error && (
-        <div className="w-full">
-          <Swiper navigation>
-            {packageData?.packageImages.map((imageUrl, i) => (
-              <SwiperSlide key={i}>
-                <div
-                  className="h-[400px]"
-                  style={{
-                    background: `url(${imageUrl}) center no-repeat`,
-                    backgroundSize: "cover",
-                  }}
-                ></div>
-              </SwiperSlide>
-            ))}
-          </Swiper>
-          {/* copy button */}
-          <div className="absolute top-[13%] right-[3%] z-10 border rounded-full w-12 h-12 flex justify-center items-center bg-slate-100 cursor-pointer">
-            <FaShare
-              className="text-slate-500"
-              onClick={() => {
-                navigator.clipboard.writeText(window.location.href);
-                setCopied(true);
-                setTimeout(() => {
-                  setCopied(false);
-                }, 2000);
-              }}
-            />
-          </div>
-          {copied && (
-            <p className="fixed top-[23%] right-[5%] z-10 rounded-md bg-slate-100 p-2">
-              Link copied!
-            </p>
-          )}
-          {/* back button */}
-          <div className="absolute top-[13%] left-[3%] z-10 border rounded-full w-12 h-12 flex justify-center items-center bg-slate-100 cursor-pointer">
-            <FaArrowLeft
-              className="text-slate-500"
-              onClick={() => {
-                navigate("/");
-              }}
-            />
-          </div>
-          <div className="w-full flex flex-col p-5 gap-2">
-            <p className="text-2xl font-bold capitalize">
-              {packageData?.packageName}
-            </p>
-            {/* price */}
-            <p className="flex gap-1 text-2xl font-semibold my-3">
-              {packageData?.packageOffer ? (
-                <>
-                  <span className="line-through text-gray-700">
-                    ${packageData?.packagePrice}
-                  </span>{" "}
-                  -<span>${packageData?.packageDiscountPrice}</span>
-                  <span className="text-lg ml-2 bg-green-700 p-1 rounded text-white">
-                    {Math.floor(
-                      ((+packageData?.packagePrice -
-                        +packageData?.packageDiscountPrice) /
-                        +packageData?.packagePrice) *
-                        100
-                    )}
-                    % Off
-                  </span>
-                </>
-              ) : (
-                <span>${packageData?.packagePrice}</span>
-              )}
-            </p>
-            {/* price */}
-            {/* destination */}
-            <p className="text-green-700 flex items-center gap-1 text-lg capitalize">
-              <FaMapMarkerAlt />
-              {packageData?.packageDestination}
-            </p>
-            {/* destination */}
+        <div className="w-full max-auto flex flex-col md:flex-row items-center justify-between gap-6">
+          {/* left div */}
+          <div className="w-full md:w-1/2 flex flex-col items-center ">
+            <h1 className="text-[#05073C] text-lg md:text-3xl text-center md:text-start font-semibold">
+              {packageData.packageName}
+            </h1>
+            <div className="flex items-center justify-between gap-10 my-3">
+              <p className="text-[#05073C] text-lg font-semibold">
+                {packageData.packageDestination}
+              </p>
+              <p className="text-[#05073C] text-lg font-semibold">
+                ${packageData.packagePrice}
+              </p>
+            </div>
+
             {/* days & nights */}
             {(+packageData?.packageDays > 0 ||
               +packageData?.packageNights > 0) && (
@@ -277,10 +201,9 @@ const Package = () => {
                     : packageData?.packageNights + " Night")}
               </p>
             )}
-            {/* days & nights */}
             {/* rating */}
             {packageData?.packageTotalRatings > 0 && (
-              <div className="flex">
+              <div className="flex items-center justify-center my-2">
                 <Rating
                   value={packageData?.packageRating || 0}
                   readOnly
@@ -289,175 +212,173 @@ const Package = () => {
                 <p>({packageData?.packageTotalRatings})</p>
               </div>
             )}
-            {/* rating */}
-            {/* Description */}
-            <div className="w-full flex flex-col mt-2">
-              {/* <h4 className="text-xl">Description:</h4> */}
-              <p className="break-all flex flex-col font-medium">
-                {packageData?.packageDescription.length > 280 ? (
-                  <>
-                    <span id="desc">
-                      {packageData?.packageDescription.substring(0, 150)}...
-                    </span>
-                    <button
-                      id="moreBtn"
-                      onClick={() => {
-                        document.getElementById("desc").innerText =
-                          packageData?.packageDescription;
-                        document.getElementById("moreBtn").style.display =
-                          "none";
-                        document.getElementById("lessBtn").style.display =
-                          "flex";
-                      }}
-                      className="w-max font-semibold flex items-center gap-2 text-gray-600 hover:underline"
-                    >
-                      More <FaArrowDown />
-                    </button>
-                    <button
-                      id="lessBtn"
-                      onClick={() => {
-                        document.getElementById("desc").innerText =
-                          packageData?.packageDescription;
-                        document.getElementById("desc").innerText =
-                          packageData?.packageDescription.substring(0, 150) +
-                          "...";
-                        document.getElementById("lessBtn").style.display =
-                          "none";
-                        document.getElementById("moreBtn").style.display =
-                          "flex";
-                      }}
-                      className="w-max font-semibold ml-2 hidden items-center gap-2 text-gray-600 hover:underline"
-                    >
-                      Less <FaArrowUp />
-                    </button>
-                  </>
-                ) : (
-                  <>{packageData?.packageDescription}</>
-                )}
-              </p>
+
+            <div className="flex flex-col my-6">
+              <div className="flex gap-5 items-center my-2">
+                <h4 className="text-gray-800 text-xl font-semibold">
+                  Activities:
+                </h4>
+                <p>{packageData?.packageActivities}</p>
+              </div>
+              <div className="flex gap-5 items-center my-2">
+                <h4 className="text-gray-800 text-xl font-semibold">Meals:</h4>
+                <p>{packageData?.packageMeals}</p>
+              </div>
+              <div className="flex gap-5 items-center my-2">
+                <h4 className="text-gray-800 text-xl font-semibold">
+                  Transportation:
+                </h4>
+                <p>{packageData?.packageTransportation}</p>
+              </div>
             </div>
-            <div className="w-full flex justify-center sm:justify-normal">
-              <button
-                type="button"
-                onClick={() => {
-                  if (currentUser) {
-                    navigate(`/booking/${params?.id}`);
-                  } else {
-                    navigate("/login");
-                  }
+          </div>
+
+          <div className="w-full md:w-1/2">
+            <Swiper
+              modules={[Autoplay]}
+              autoplay={{
+                delay: 2500,
+                disableOnInteraction: false,
+              }}
+              loop={true}
+              className="w-full h-[300px] md:h-[400px]"
+            >
+              {packageData.packageImages.map((img, i) => (
+                <SwiperSlide key={i}>
+                  <img
+                    src={`http://localhost:8000/images/${img}`}
+                    alt={`slide-${i}`}
+                    className="w-full h-full object-cover rounded-xl" // rounded-xl for smooth rounded corners
+                  />
+                </SwiperSlide>
+              ))}
+            </Swiper>
+          </div>
+        </div>
+      )}
+
+      <div className="w-full max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-10 py-16 px-4">
+        {/* Left div */}
+        <div className="w-full md:w-1/2 flex flex-col items-start gap-6 mt-12">
+          <p className="text-gray-800 text-2xl font-semibold">Description</p>
+          <p className="text-gray-700 leading-relaxed">
+            {packageData?.packageDescription.length > 280 ? (
+              <>
+                <span id="desc">
+                  {packageData?.packageDescription.substring(0, 150)}...
+                </span>
+              </>
+            ) : (
+              <>{packageData?.packageDescription}</>
+            )}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (currentUser) {
+                navigate(`/booking/${params?.id}`);
+              } else {
+                navigate("/login");
+              }
+            }}
+            className="w-[200px] bg-[#EB662B] text-white rounded p-3 hover:opacity-95 transition"
+          >
+            Book
+          </button>
+        </div>
+
+        {/* Right div */}
+        <div className="w-full md:w-1/2 text-gray-700 leading-relaxed  mb-6 flex flex-col gap-4">
+          <h4 className="text-gray-800 text-2xl font-semibold">
+            Accommodation
+          </h4>
+          <p>{packageData?.packageAccommodation}</p>
+        </div>
+      </div>
+      <hr className="border border-[#EB662B]" />
+      {/* give rating/review */}
+      <div className="w-full flex flex-col py-16 items-center">
+        {packageRatings && (
+          <>
+            <h4 className="text-xl">Rating/Reviews:</h4>
+            <div
+              className={`w-full sm:max-w-[640px] gap-2 ${
+                !currentUser || ratingGiven
+                  ? "hidden"
+                  : "flex flex-col items-center"
+              } `}
+            >
+              <Rating
+                name="simple-controlled"
+                className="w-max"
+                value={ratingsData?.rating}
+                onChange={(e, newValue) => {
+                  setRatingsData({
+                    ...ratingsData,
+                    rating: newValue,
+                  });
                 }}
-                className="w-full sm:w-[200px] bg-green-700 text-white rounded p-3 hover:opacity-95"
+              />
+              <textarea
+                className="w-full resize-none p-3 border border-black rounded"
+                rows={3}
+                placeholder="Review"
+                value={ratingsData?.review}
+                onChange={(e) => {
+                  setRatingsData({
+                    ...ratingsData,
+                    review: e.target.value,
+                  });
+                }}
+              ></textarea>
+              <button
+                disabled={
+                  (ratingsData.rating === 0 && ratingsData.review === "") ||
+                  loading
+                }
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  giveRating();
+                }}
+                className="w-full p-2 bg-[#EB662B] text-white rounded disabled:opacity-80 hover:opacity-95"
               >
-                Book
+                {loading ? "Loading..." : "Submit"}
               </button>
+              <hr />
             </div>
-            {/* Description */}
-            {/* Accommodation */}
-            <div className="w-full flex flex-col mt-2">
-              <h4 className="text-xl">Accommodation:</h4>
-              <p>{packageData?.packageAccommodation}</p>
-            </div>
-            {/* Accommodation */}
-            {/* Activities */}
-            <div className="w-full flex flex-col mt-2">
-              <h4 className="text-xl">Activities:</h4>
-              <p>{packageData?.packageActivities}</p>
-            </div>
-            {/* Activities */}
-            {/* meals */}
-            <div className="w-full flex flex-col mt-2">
-              <h4 className="text-xl">Meals:</h4>
-              <p>{packageData?.packageMeals}</p>
-            </div>
-            {/* meals */}
-            {/* Transportation */}
-            <div className="w-full flex flex-col mt-2">
-              <h4 className="text-xl">Transportation:</h4>
-              <p>{packageData?.packageTransportation}</p>
-            </div>
-            {/* Transportation */}
-            <hr />
-            {/* give rating/review */}
-            <div className="w-full flex flex-col mt-2 items-center">
-              {packageRatings && (
-                <>
-                  <h4 className="text-xl">Rating/Reviews:</h4>
-                  <div
-                    className={`w-full sm:max-w-[640px] gap-2 ${
-                      !currentUser || ratingGiven
-                        ? "hidden"
-                        : "flex flex-col items-center"
-                    } `}
-                  >
-                    <Rating
-                      name="simple-controlled"
-                      className="w-max"
-                      value={ratingsData?.rating}
-                      onChange={(e, newValue) => {
-                        setRatingsData({
-                          ...ratingsData,
-                          rating: newValue,
-                        });
-                      }}
-                    />
-                    <textarea
-                      className="w-full resize-none p-3 border border-black rounded"
-                      rows={3}
-                      placeholder="Review"
-                      value={ratingsData?.review}
-                      onChange={(e) => {
-                        setRatingsData({
-                          ...ratingsData,
-                          review: e.target.value,
-                        });
-                      }}
-                    ></textarea>
-                    <button
-                      disabled={
-                        (ratingsData.rating === 0 &&
-                          ratingsData.review === "") ||
-                        loading
-                      }
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        giveRating();
-                      }}
-                      className="w-full p-2 bg-green-700 text-white rounded disabled:opacity-80 hover:opacity-95"
-                    >
-                      {loading ? "Loading..." : "Submit"}
-                    </button>
-                    <hr />
-                  </div>
-                  <div className="mt-3 w-full gap-2 grid 2xl:grid-cols-6 xl:grid-cols-5 xlplus:grid-cols-4 lg:grid-cols-3 md:grid-cols-2">
-                    <RatingCard packageRatings={packageRatings} />
-                    {packageData.packageTotalRatings > 4 && (
-                      <button
-                        onClick={() =>
-                          navigate(`/package/ratings/${params?.id}`)
-                        }
-                        className="flex items-center justify-center text-lg gap-2 p-2 rounded border hover:bg-slate-500 hover:text-white"
-                      >
-                        View All <FaArrowRight />
-                      </button>
-                    )}
-                  </div>
-                </>
-              )}
-              {(!currentUser || currentUser === null) && (
+
+            <div className="mt-3 w-full gap-2 grid 2xl:grid-cols-6 xl:grid-cols-5 xlplus:grid-cols-4 lg:grid-cols-3 md:grid-cols-2">
+              <RatingCard packageRatings={packageRatings} />
+              {packageData.packageTotalRatings > 4 && (
                 <button
-                  onClick={() => {
-                    navigate("/login");
-                  }}
-                  className="p-2 rounded text-white bg-green-700"
+                  onClick={() => navigate(`/package/ratings/${params?.id}`)}
+                  className="flex items-center justify-center text-lg gap-2 p-2 rounded border hover:bg-slate-500 hover:text-white"
                 >
-                  Rate Package
+                  View All <FaArrowRight />
                 </button>
               )}
             </div>
-            {/* give rating/review */}
-          </div>
-        </div>
+          </>
+        )}
+        {(!currentUser || currentUser === null) && (
+          <button
+            onClick={() => {
+              navigate("/login");
+            }}
+            className="p-2 rounded text-white bg-green-700"
+          >
+            Rate Package
+          </button>
+        )}
+      </div>
+
+      {showMap && (
+        <MapModal
+          location={packageData.packageDestination}
+          onClose={() => setShowMap(false)}
+        />
       )}
     </div>
   );

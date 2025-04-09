@@ -3,6 +3,7 @@ import React from "react";
 import { FaArrowDown, FaArrowUp } from "react-icons/fa";
 
 const RatingCard = ({ packageRatings }) => {
+  console.log(packageRatings);
   return (
     <>
       {packageRatings &&
@@ -15,7 +16,10 @@ const RatingCard = ({ packageRatings }) => {
             >
               <div className="flex gap-2 items-center">
                 <img
-                  src={rating.userProfileImg || defaultProfileImg}
+                  src={
+                    `http://localhost:8000/images/${rating.userProfileImg}` ||
+                    defaultProfileImg
+                  }
                   alt={rating.username[0]}
                   className="border w-6 h-6 border-black rounded-[50%]"
                 />

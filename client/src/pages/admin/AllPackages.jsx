@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { toast } from "react-toastify";
 
 const AllPackages = () => {
   const [packages, setPackages] = useState([]);
@@ -27,7 +28,7 @@ const AllPackages = () => {
         setLoading(false);
       } else {
         setLoading(false);
-        alert(data?.message || "Something went wrong!");
+        toast.error(data?.message || "Something went wrong!");
       }
       if (data?.packages?.length > 8) {
         setShowMoreBtn(true);
@@ -69,7 +70,7 @@ const AllPackages = () => {
         method: "DELETE",
       });
       const data = await res.json();
-      alert(data?.message);
+      toast.success(data?.message);
       getPackages();
       setLoading(false);
     } catch (error) {
@@ -154,7 +155,7 @@ const AllPackages = () => {
               >
                 <Link to={`/package/${pack._id}`}>
                   <img
-                    src={pack?.packageImages[0]}
+                    src={`http://localhost:8000/images/${pack.packageImages[0]}`}
                     alt="image"
                     className="w-20 h-20 rounded"
                   />

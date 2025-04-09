@@ -3,12 +3,11 @@ import {
   deleteUserAccount,
   deleteUserAccountAdmin,
   getAllUsers,
-  updateProfilePhoto,
   updateUser,
   updateUserPassword,
 } from "../controllers/user.controller.js";
 import { isAdmin, requireSignIn } from "../middlewares/authMiddleware.js";
-
+import upload from "../middlewares/multer.js";
 const router = express.Router();
 
 //user auth
@@ -22,10 +21,7 @@ router.get("/admin-auth", requireSignIn, isAdmin, (req, res) => {
 });
 
 //update user details
-router.post("/update/:id", requireSignIn, updateUser);
-
-//update user profile photo
-router.post("/update-profile-photo/:id", requireSignIn, updateProfilePhoto);
+router.post("/update/:id", requireSignIn, upload.single("avatar"), updateUser);
 
 //update user password
 router.post("/update-password/:id", requireSignIn, updateUserPassword);

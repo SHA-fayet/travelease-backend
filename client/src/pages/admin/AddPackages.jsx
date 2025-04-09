@@ -1,12 +1,6 @@
 import React, { useState } from "react";
-import { app } from "../../firebase";
-import {
-  getDownloadURL,
-  getStorage,
-  ref,
-  uploadBytesResumable,
-} from "firebase/storage";
-
+import { toast } from "react-toastify";
+import axios from "axios";
 const AddPackages = () => {
   const [formData, setFormData] = useState({
     packageName: "",
@@ -23,10 +17,8 @@ const AddPackages = () => {
     packageOffer: false,
     packageImages: [],
   });
-  const [images, setImages] = useState([]);
-  const [imageUploadError, setImageUploadError] = useState(false);
+
   const [uploading, setUploading] = useState(false);
-  const [imageUploadPercent, setImageUploadPercent] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 
@@ -37,75 +29,22 @@ const AddPackages = () => {
     }
   };
 
-  const handleImageSubmit = () => {
-    if (
-      images.length > 0 &&
-      images.length + formData.packageImages.length < 6
-    ) {
-      setUploading(true);
-      setImageUploadError(false);
-      const promises = [];
-
-      for (let i = 0; i < images.length; i++) {
-        promises.push(storeImage(images[i]));
-      }
-      Promise.all(promises)
-        .then((urls) => {
-          setFormData({
-            ...formData,
-            packageImages: formData.packageImages.concat(urls),
-          });
-          setImageUploadError(false);
-          setUploading(false);
-        })
-        .catch((err) => {
-          setImageUploadError("Image upload failed (2mb max per image)");
-          setUploading(false);
-        });
-    } else {
-      setImageUploadError("You can only upload 5 images per package");
-      setUploading(false);
-    }
+  const handleFile = (e) => {
+    const files = e.target.files;
+    setFormData((prevData) => ({
+      ...prevData,
+      packageImages: Array.from(files), // Convert FileList to an array
+    }));
   };
-
-  const storeImage = async (file) => {
-    return new Promise((resolve, reject) => {
-      const storage = getStorage(app);
-      const fileName = new Date().getTime() + file.name.replace(/\s/g, "");
-      const storageRef = ref(storage, fileName);
-      const uploadTask = uploadBytesResumable(storageRef, file);
-      uploadTask.on(
-        "state_changed",
-        (snapshot) => {
-          const progress =
-            (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          setImageUploadPercent(Math.floor(progress));
-        },
-        (error) => {
-          reject(error);
-        },
-        () => {
-          getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
-            resolve(downloadURL);
-          });
-        }
-      );
-    });
-  };
-
-  const handleDeleteImage = (index) => {
-    setFormData({
-      ...formData,
-      packageImages: formData.packageImages.filter((_, i) => i !== index),
-    });
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Validations
     if (formData.packageImages.length === 0) {
-      alert("You must upload atleast 1 image");
+      toast.error("You must upload at least 1 image");
       return;
     }
+
     if (
       formData.packageName === "" ||
       formData.packageDescription === "" ||
@@ -116,264 +55,279 @@ const AddPackages = () => {
       formData.packageActivities === "" ||
       formData.packagePrice === 0
     ) {
-      alert("All fields are required!");
+      toast.error("All fields are required!");
       return;
     }
-    if (formData.packagePrice < 0) {
-      alert("Price should be greater than 500!");
+
+    if (formData.packagePrice < 500) {
+      toast.error("Price should be greater than 500!");
       return;
     }
-    if (formData.packageDiscountPrice >= formData.packagePrice) {
-      alert("Regular Price should be greater than Discount Price!");
+
+    if (
+      formData.packageOffer &&
+      formData.packageDiscountPrice >= formData.packagePrice
+    ) {
+      toast.error("Regular Price should be greater than Discount Price!");
       return;
     }
-    if (formData.packageOffer === false) {
-      setFormData({ ...formData, packageDiscountPrice: 0 });
+
+    // Prepare FormData
+    const data = new FormData();
+    data.append("packageName", formData.packageName);
+    data.append("packageDescription", formData.packageDescription);
+    data.append("packageDestination", formData.packageDestination);
+    data.append("packageAccommodation", formData.packageAccommodation);
+    data.append("packageTransportation", formData.packageTransportation);
+    data.append("packageMeals", formData.packageMeals);
+    data.append("packageActivities", formData.packageActivities);
+    data.append("packagePrice", formData.packagePrice);
+    data.append("packageDiscountPrice", formData.packageDiscountPrice);
+    data.append("packageOffer", formData.packageOffer);
+
+    // Append images
+    if (Array.isArray(formData.packageImages)) {
+      formData.packageImages.forEach((image) => {
+        data.append("packageImages", image); // Must match Multer field name
+      });
     }
-    // console.log(formData);
+
     try {
       setLoading(true);
-      setError(false);
+      const res = await axios.post(
+        `http://localhost:8000/api/package/update-package/${params?.id}`, // Update API endpoint
+        data,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data", // Make sure the Content-Type is set to multipart
+          },
+          withCredentials: true, // If you're using cookies or sessions for authentication
+        }
+      );
 
-      const res = await fetch("/api/package/create-package", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      });
-      const data = await res.json();
-      if (data?.success === false) {
-        setError(data?.message);
+      console.log(res, "res");
+
+      if (!res.data.success) {
+        setError(res.data.message);
         setLoading(false);
+        return;
       }
+
+      toast.success(res.data.message || "Package updated successfully!");
       setLoading(false);
       setError(false);
-      alert(data?.message);
-      setFormData({
-        packageName: "",
-        packageDescription: "",
-        packageDestination: "",
-        packageDays: 1,
-        packageNights: 1,
-        packageAccommodation: "",
-        packageTransportation: "",
-        packageMeals: "",
-        packageActivities: "",
-        packagePrice: 500,
-        packageDiscountPrice: 0,
-        packageOffer: false,
-        packageImages: [],
-      });
-      setImages([]);
+
+      // Redirect or reset the form if needed
+      navigate(`/package/${params?.id}`);
     } catch (err) {
-      console.log(err);
+      console.error("Submit error:", err);
+      setLoading(false);
+      setError("Something went wrong. Try again!");
     }
   };
 
   return (
     <>
-      <div className="w-full flex justify-center p-3">
-        <form
-          onSubmit={handleSubmit}
-          className="w-4/5 shadow-md rounded-xl p-3 gap-2 flex flex-col items-center"
-        >
-          <h1 className="text-center text-2xl font-semibold">Add Package</h1>
-          <div className="flex flex-col w-full">
-            <label htmlFor="packageName">Name:</label>
-            <input
-              type="text"
-              className="border border-black rounded"
-              id="packageName"
-              value={formData.packageName}
-              onChange={handleChange}
-            />
-          </div>
-          <div className="flex flex-col w-full">
-            <label htmlFor="packageDescription">Description:</label>
-            <textarea
-              type="text"
-              className="border border-black rounded resize-none"
-              id="packageDescription"
-              value={formData.packageDescription}
-              onChange={handleChange}
-            />
-          </div>
-          <div className="flex flex-col w-full">
-            <label htmlFor="packageDestination">Destination:</label>
-            <input
-              type="text"
-              className="border border-black rounded"
-              id="packageDestination"
-              value={formData.packageDestination}
-              onChange={handleChange}
-            />
-          </div>
-          <div className="flex flex-wrap w-full gap-2">
-            <div className="flex flex-col flex-1">
-              <label htmlFor="packageDays">Days:</label>
-              <input
-                type="number"
-                className="border border-black rounded"
-                id="packageDays"
-                value={formData.packageDays}
-                onChange={handleChange}
-              />
-            </div>
-            <div className="flex flex-col flex-1">
-              <label htmlFor="packageNights">Nights:</label>
-              <input
-                type="number"
-                className="border border-black rounded"
-                id="packageNights"
-                value={formData.packageNights}
-                onChange={handleChange}
-              />
-            </div>
-          </div>
-          <div className="flex flex-col w-full">
-            <label htmlFor="packageAccommodation">Accommodation:</label>
-            <textarea
-              type="text"
-              className="border border-black rounded resize-none"
-              id="packageAccommodation"
-              value={formData.packageAccommodation}
-              onChange={handleChange}
-            />
-          </div>
-          <div className="flex flex-col w-full">
-            <label htmlFor="packageTransportation">Transportation:</label>
-            <select
-              className="border border-black rounded-lg"
-              id="packageTransportation"
-              onChange={handleChange}
+      <div className=" mt-6 w-full min-h-screen flex items-center justify-center bg-[#EB662B] text-white rounded-lg">
+        <div className="w-[95%] md:w-[90%] lg:w-[80%]  mx-auto flex flex-col gap-6 rounded-xl shadow-xl py-8">
+          {/* Centered Heading */}
+          <h1 className="text-center text-lg font-semibold md:text-3xl md:font-bold text-white">
+            Add <span className="">Package</span>
+          </h1>
+
+          <div className="flex flex-col md:flex-row gap-5 items-center justify-center px-4">
+            {/* Right Side: Form */}
+            <form
+              onSubmit={handleSubmit}
+              className="w-full flex flex-col gap-4"
             >
-              <option>Select</option>
-              <option>Flight</option>
-              <option>Train</option>
-              <option>Boat</option>
-              <option>Other</option>
-            </select>
-          </div>
-          <div className="flex flex-col w-full">
-            <label htmlFor="packageMeals">Meals:</label>
-            <textarea
-              type="text"
-              className="border border-black rounded resize-none"
-              id="packageMeals"
-              value={formData.packageMeals}
-              onChange={handleChange}
-            />
-          </div>
-          <div className="flex flex-col w-full">
-            <label htmlFor="packageActivities">Activities:</label>
-            <textarea
-              type="text"
-              className="border border-black rounded resize-none"
-              id="packageActivities"
-              value={formData.packageActivities}
-              onChange={handleChange}
-            />
-          </div>
-          <div className="flex flex-col w-full">
-            <label htmlFor="packagePrice">Price:</label>
-            <input
-              type="number"
-              className="border border-black rounded"
-              id="packagePrice"
-              value={formData.packagePrice}
-              onChange={handleChange}
-            />
-          </div>
-          <div className="flex items-center gap-2 w-full">
-            <label htmlFor="packageOffer">Offer:</label>
-            <input
-              type="checkbox"
-              className="border border-black rounded w-4 h-4"
-              id="packageOffer"
-              checked={formData.packageOffer}
-              onChange={handleChange}
-            />
-          </div>
-          <div
-            className={`${
-              formData.packageOffer ? "flex flex-col w-full" : "hidden"
-            }`}
-          >
-            <label htmlFor="packageDiscountPrice">Discount Price:</label>
-            <input
-              type="number"
-              className="border border-black rounded"
-              id="packageDiscountPrice"
-              value={formData.packageDiscountPrice}
-              onChange={handleChange}
-            />
-          </div>
-          <div className="flex flex-col w-full">
-            <label htmlFor="packageImages">
-              Images:
-              <span className="text-red-700 text-sm">
-                (images size should be less than 2mb and max 5 images)
-              </span>
-            </label>
-            <input
-              type="file"
-              className="border border-black rounded"
-              id="packageImages"
-              multiple
-              onChange={(e) => setImages(e.target.files)}
-            />
-          </div>
-          {imageUploadError ||
-            (error && (
-              <span className="text-red-600 w-full">
-                {imageUploadError || error}
-              </span>
-            ))}
-          <button
-            hidden={images.length === 0}
-            disabled={uploading || loading}
-            className="bg-green-700 p-3 rounded text-white hover:opacity-95 disabled:opacity-80 w-full"
-            type="button"
-            onClick={handleImageSubmit}
-          >
-            {uploading
-              ? `Uploading...(${imageUploadPercent}%)`
-              : loading
-              ? "Loading..."
-              : "Upload Images"}
-          </button>
-          <button
-            disabled={uploading || loading}
-            className="bg-green-700 p-3 rounded text-white hover:opacity-95 disabled:opacity-80 w-full"
-          >
-            {uploading
-              ? "Uploading..."
-              : loading
-              ? "Loading..."
-              : "Add Package"}
-          </button>
-          {formData.packageImages.length > 0 && (
-            <div className="p-3 w-full flex flex-col justify-center">
-              {formData.packageImages.map((image, i) => {
-                return (
-                  <div
-                    key={i}
-                    className="shadow-xl rounded-lg p-1 flex flex-wrap my-2 justify-between"
-                  >
-                    <img src={image} alt="" className="h-20 w-20 rounded" />
-                    <button
-                      onClick={() => handleDeleteImage(i)}
-                      className="p-2 text-red-500 hover:cursor-pointer hover:underline"
-                    >
-                      Delete
-                    </button>
+              <div className="flex flex-col">
+                <label>Name:</label>
+                <input
+                  type="text"
+                  id="packageName"
+                  value={formData.packageName}
+                  onChange={handleChange}
+                  className="p-2 border rounded bg-gray-200 text-gray-800 outline-none"
+                />
+              </div>
+
+              <div className="flex flex-col">
+                <label>Description:</label>
+                <textarea
+                  id="packageDescription"
+                  value={formData.packageDescription}
+                  onChange={handleChange}
+                  className="p-2 border rounded bg-gray-200 text-gray-800  outline-none resize-none"
+                />
+              </div>
+
+              <div className="flex flex-col">
+                <label>Destination:</label>
+                <input
+                  type="text"
+                  id="packageDestination"
+                  value={formData.packageDestination}
+                  onChange={handleChange}
+                  className="p-2 border rounded bg-gray-200 text-gray-800  outline-none"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <div className="flex flex-col w-full">
+                  <label>Days:</label>
+                  <input
+                    type="number"
+                    id="packageDays"
+                    value={formData.packageDays}
+                    onChange={handleChange}
+                    className="p-2 border rounded bg-gray-200 text-gray-800  outline-none"
+                  />
+                </div>
+                <div className="flex flex-col w-full">
+                  <label>Nights:</label>
+                  <input
+                    type="number"
+                    id="packageNights"
+                    value={formData.packageNights}
+                    onChange={handleChange}
+                    className="p-2 border rounded bg-gray-200 text-gray-800  outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col">
+                <label>Accommodation:</label>
+                <textarea
+                  id="packageAccommodation"
+                  value={formData.packageAccommodation}
+                  onChange={handleChange}
+                  className="p-2 border rounded bg-gray-200 text-gray-800  outline-none resize-none"
+                />
+              </div>
+
+              <div className="flex flex-col">
+                <label>Transportation:</label>
+                <select
+                  id="packageTransportation"
+                  onChange={handleChange}
+                  className="p-2 border rounded bg-gray-200 text-gray-800  outline-none"
+                >
+                  <option>Select</option>
+                  <option>Flight</option>
+                  <option>Train</option>
+                  <option>Boat</option>
+                  <option>Other</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col">
+                <label>Meals:</label>
+                <textarea
+                  id="packageMeals"
+                  value={formData.packageMeals}
+                  onChange={handleChange}
+                  className="p-2 border rounded bg-gray-200 text-gray-800  outline-none resize-none"
+                />
+              </div>
+
+              <div className="flex flex-col">
+                <label>Activities:</label>
+                <textarea
+                  id="packageActivities"
+                  value={formData.packageActivities}
+                  onChange={handleChange}
+                  className="p-2 border rounded bg-gray-200 text-gray-800  outline-none resize-none"
+                />
+              </div>
+
+              <div className="flex flex-col">
+                <label>Price:</label>
+                <input
+                  type="number"
+                  id="packagePrice"
+                  value={formData.packagePrice}
+                  onChange={handleChange}
+                  className="p-2 border rounded bg-gray-200 text-gray-800  outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label htmlFor="packageOffer">Offer:</label>
+                <input
+                  type="checkbox"
+                  id="packageOffer"
+                  checked={formData.packageOffer}
+                  onChange={handleChange}
+                  className="w-4 h-4"
+                />
+              </div>
+
+              {formData.packageOffer && (
+                <div className="flex flex-col">
+                  <label>Discount Price:</label>
+                  <input
+                    type="number"
+                    id="packageDiscountPrice"
+                    value={formData.packageDiscountPrice}
+                    onChange={handleChange}
+                    className="p-2 border rounded bg-gray-200 text-gray-800  outline-none"
+                  />
+                </div>
+              )}
+
+              {/* Upload Section */}
+              <div>
+                <label className="text-sm font-medium   mb-2">
+                  Upload Images
+                </label>
+                <div className="relative flex items-center justify-center w-full cursor-pointer bg-white border-2 border-dashed border-gray-300 rounded-lg p-6 hover:bg-gray-50 transition">
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={handleFile}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                  <span className="text-gray-500">Click to select images</span>
+                </div>
+
+                {/* Image Preview */}
+                {formData.packageImages.length > 0 && (
+                  <div className="mt-4 grid grid-cols-3 gap-4">
+                    {formData.packageImages.map((file, index) => {
+                      const imageUrl = URL.createObjectURL(file);
+                      return (
+                        <div
+                          key={index}
+                          className="relative w-full aspect-square border border-gray-300 rounded overflow-hidden"
+                        >
+                          <img
+                            src={imageUrl}
+                            alt={`Preview ${index + 1}`}
+                            className="object-cover w-full h-full"
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </form>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                disabled={uploading || loading}
+                className="text-white p-3 rounded bg-black hover:opacity-95 disabled:opacity-70 mt-2"
+              >
+                {uploading
+                  ? "Uploading..."
+                  : loading
+                  ? "Loading..."
+                  : "Create New Package"}
+              </button>
+            </form>
+          </div>
+        </div>
       </div>
     </>
   );

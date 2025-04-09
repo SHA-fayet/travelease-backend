@@ -6,37 +6,48 @@ const packageSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    packageDescription: {
+    // Unified destination field (Critical for AI Visual Destination Discovery)
+    packageDestination: {
       type: String,
       required: true,
+      index: true,
     },
-    packageDestination: {
+    // Made optional to prevent backend crashes, but kept for advanced AI search filtering
+    placeName: {
+      type: String,
+      default: "",
+    },
+    district: {
+      type: String,
+      default: "",
+    },
+    packageDescription: {
       type: String,
       required: true,
     },
     packageDays: {
       type: Number,
-      required: true,
+      default: 3,
     },
     packageNights: {
       type: Number,
-      required: true,
+      default: 2,
     },
     packageAccommodation: {
       type: String,
-      required: true,
+      default: "Hotel / Eco Resort",
     },
     packageTransportation: {
       type: String,
-      required: true,
+      default: "AC Bus / Local Transport",
     },
     packageMeals: {
       type: String,
-      required: true,
+      default: "Breakfast & Dinner Included",
     },
     packageActivities: {
       type: String,
-      required: true,
+      default: "Sightseeing, Guided Tour, Photography",
     },
     packagePrice: {
       type: Number,
@@ -44,28 +55,41 @@ const packageSchema = new mongoose.Schema(
     },
     packageDiscountPrice: {
       type: Number,
-      required: true,
+      default: 0,
     },
     packageOffer: {
       type: Boolean,
-      required: true,
+      default: false,
+    },
+    packageImages: {
+      type: [String],
+      default: ["default-travel.jpg"],
     },
     packageRating: {
       type: Number,
-      default: 0,
+      default: 5,
     },
     packageTotalRatings: {
       type: Number,
       default: 0,
     },
-    packageImages: {
-      type: Array,
-      required: true,
+    
+    // --- AGENCY & ADMIN RELATIONSHIPS (Feature 6 Requirement) ---
+    agencyName: {
+      type: String,
+      default: "TravelEase Official",
+    },
+    agencyId: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: "User",
+      index: true 
+    },
+    userRef: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: "User" 
     },
   },
   { timestamps: true }
 );
 
-const Package = mongoose.model("Package", packageSchema);
-
-export default Package;
+export default mongoose.model("Package", packageSchema);

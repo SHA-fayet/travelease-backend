@@ -1,31 +1,37 @@
 import User from "../models/user.model.js";
 import bcryptjs from "bcryptjs";
 
-//update uset details
+// Update user details & Avatar
 export const updateUser = async (req, res) => {
-  if (req.user.id !== req.params.id) {
+  // Fortified auth check to handle both string and ObjectId token structures
+  const authId = req.user?.id || req.user?._id;
+  if (String(authId) !== String(req.params.id)) {
     return res.status(401).send({
       success: false,
-      message: "You can only update your own account please login again!",
+      message: "You can only update your own account. Please login again!",
     });
   }
-  //   console.log(req.body.phone);
 
   try {
+    const updatedFields = {
+      username: req.body.username,
+      email: req.body.email,
+      address: req.body.address,
+      phone: req.body.phone,
+    };
+
+    // If multer successfully intercepted the upload, attach the filename
+    if (req.file) {
+      updatedFields.avatar = req.file.filename; 
+    }
+
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,
-      {
-        $set: {
-          username: req.body.username,
-          email: req.body.email,
-          address: req.body.address,
-          phone: req.body.phone,
-        },
-      },
+      { $set: updatedFields },
       { new: true }
     );
 
-    const { password: pass, ...rest } = updatedUser._doc;
+    const { password: pass, ...rest } = updatedUser._doc || updatedUser;
 
     res.status(201).send({
       success: true,
@@ -34,73 +40,35 @@ export const updateUser = async (req, res) => {
     });
   } catch (error) {
     if (error.code === 11000) {
-      res.status(200).send({
-        success: true,
-        message: "email already taken please login!",
-      });
-    }
-  }
-};
-
-//update user profile photo
-export const updateProfilePhoto = async (req, res) => {
-  try {
-    if (req.user.id !== req.params.id) {
-      return res.status(401).send({
-        success: false,
-        message:
-          "You can only update your own account profile photo please login again!",
+      return res.status(400).send({
+        success: false, // Fixed: This was previously true in your code, which tricked the frontend
+        message: "Email already taken!",
       });
     }
 
-    const updatedProfilePhoto = await User.findByIdAndUpdate(
-      req.params.id,
-      {
-        $set: {
-          avatar: req.body.avatar,
-        },
-      },
-      { new: true }
-    );
-
-    const validUser = await User.findById(req.params.id);
-    const { password: pass, ...rest } = validUser._doc;
-
-    if (updatedProfilePhoto) {
-      return res.status(201).send({
-        success: true,
-        message: "Profile photo updated",
-        user: rest,
-      });
-    } else {
-      return res.status(500).send({
-        success: false,
-        message: "Something went wrong",
-      });
-    }
-  } catch (error) {
-    console.log(error);
+    console.error(error);
+    res.status(500).send({
+      success: false,
+      message: "Something went wrong while updating user",
+    });
   }
 };
 
 // update user password
 export const updateUserPassword = async (req, res) => {
   try {
-    if (req.user.id !== req.params.id) {
+    const authId = req.user?.id || req.user?._id;
+    if (String(authId) !== String(req.params.id)) {
       return res.status(401).send({
         success: false,
-        message:
-          "You can only update your own account password please login again!",
+        message: "You can only update your own account password. Please login again!",
       });
     }
 
     const validUser = await User.findById(req.params.id);
 
     if (!validUser) {
-      return res.status(404).send({
-        success: false,
-        message: "User Not Found!",
-      });
+      return res.status(404).send({ success: false, message: "User Not Found!" });
     }
 
     const oldPassword = req.body.oldpassword;
@@ -108,20 +76,13 @@ export const updateUserPassword = async (req, res) => {
 
     const validPassword = bcryptjs.compareSync(oldPassword, validUser.password);
     if (!validPassword) {
-      return res.status(200).send({
-        success: false,
-        message: "Invalid password",
-      });
+      return res.status(400).send({ success: false, message: "Invalid old password" });
     }
 
     const updatedHashedPassword = bcryptjs.hashSync(newPassword, 10);
-    const updatedPassword = await User.findByIdAndUpdate(
+    await User.findByIdAndUpdate(
       req.params.id,
-      {
-        $set: {
-          password: updatedHashedPassword,
-        },
-      },
+      { $set: { password: updatedHashedPassword } },
       { new: true }
     );
 
@@ -130,30 +91,28 @@ export const updateUserPassword = async (req, res) => {
       message: "Password Updated Successfully",
     });
   } catch (error) {
-    console.log(error);
+    console.error(error);
+    res.status(500).send({ success: false, message: "Server error" });
   }
 };
 
-//delete user
+// delete user
 export const deleteUserAccount = async (req, res, next) => {
-  if (req.user.id !== req.params.id)
-    return res.status(401).send({
-      success: false,
-      message: "You can only delete your account!",
-    });
+  const authId = req.user?.id || req.user?._id;
+  if (String(authId) !== String(req.params.id)) {
+    return res.status(401).send({ success: false, message: "You can only delete your account!" });
+  }
+  
   try {
     await User.findByIdAndDelete(req.params.id);
-    res.clearCookie("access_token"); //clear cookie before sending json
-    res.status(200).send({
-      success: true,
-      message: "User account has been deleted!",
-    });
+    res.clearCookie("access_token"); 
+    res.status(200).send({ success: true, message: "User account has been deleted!" });
   } catch (error) {
-    console.log(error);
+    console.error(error);
   }
 };
 
-//get all users admin
+// get all users admin
 export const getAllUsers = async (req, res) => {
   try {
     const searchTerm = req.query.searchTerm || "";
@@ -168,25 +127,19 @@ export const getAllUsers = async (req, res) => {
     if (users && users.length > 0) {
       res.send(users);
     } else {
-      res.status(200).send({
-        success: false,
-        message: "No Users Yet!",
-      });
+      res.status(200).send({ success: false, message: "No Users Yet!" });
     }
   } catch (error) {
-    console.log(error);
+    console.error(error);
   }
 };
 
-//delete user admin
+// delete user admin
 export const deleteUserAccountAdmin = async (req, res, next) => {
   try {
     await User.findByIdAndDelete(req?.params?.id);
-    res.status(200).send({
-      success: true,
-      message: "User account has been deleted!",
-    });
+    res.status(200).send({ success: true, message: "User account has been deleted!" });
   } catch (error) {
-    console.log(error);
+    console.error(error);
   }
 };

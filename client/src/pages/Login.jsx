@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 import {
   loginStart,
   loginSuccess,
   loginFailure,
 } from "../redux/user/userSlice.js";
 import { useDispatch, useSelector } from "react-redux";
-
+import loginImage from "../assets/images/login.png";
 const Login = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -15,12 +16,10 @@ const Login = () => {
     email: "",
     password: "",
   });
-  // console.log(formData);
-
   const handleChange = (e) => {
     setFormData({
       ...formData,
-      [e.target.id]: e.target.value,
+      [e.target.name]: e.target.value,
     });
   };
 
@@ -38,11 +37,11 @@ const Login = () => {
       const data = await res.json();
       if (data?.success) {
         dispatch(loginSuccess(data?.user));
-        alert(data?.message);
+        toast.success(data?.message);
         navigate("/");
       } else {
         dispatch(loginFailure(data?.message));
-        alert(data?.message);
+        toast.error(data?.message);
       }
     } catch (error) {
       dispatch(loginFailure(error.message));
@@ -51,52 +50,56 @@ const Login = () => {
   };
 
   return (
-    <div
-      className="flex justify-center items-center"
-      style={{
-        width: "100%",
-        height: "90vh",
-        background:
-          "linear-gradient(0deg, rgba(2,0,36,1) 0%, rgba(9,9,121,1) 35%, rgba(0,212,255,1) 100%)",
-      }}
-    >
-      <form onSubmit={handleSubmit}>
-        <div className="flex flex-col border border-black rounded-lg p-4 w-72 h-fit gap-5 sm:w-[320px] bg-white bg-opacity-60">
-          <h1 className="text-3xl text-center font-semibold">Login</h1>
-          <div className="flex flex-col">
-            <label htmlFor="email" className="font-semibold">
-              Email:
-            </label>
-            <input
-              type="email"
-              id="email"
-              className="p-3 rounded border border-black bg-white bg-opacity-80"
-              onChange={handleChange}
-            />
+    <div className=" w-full mx-auto h-screen flex justify-center items-center bg-[#FFF1DA]">
+      <div className="w-full min-h-screen flex items-center justify-center bg-[#FFF1DA]">
+        <div className=" rounded-md w-[90%] bg-white md:w-[60%] mx-auto flex flex-col gap-6">
+          {/* Centered Heading */}
+          <h1 className="text-center text-lg mt-6 font-medium md:text-3xl md:font-bold text-gray-800">
+            Welcome to <span className="text-[#6358DC]">Trevo</span>
+          </h1>
+
+          {/* Form + Image Box */}
+          <div className="flex flex-col md:flex-row gap-5  h-auto md:h-[450px] rounded-md items-center justify-center p-4">
+            <div className="w-full md:w-1/2 flex justify-center">
+              <img src={loginImage} alt="Login" className="max-h-[300px]" />
+            </div>
+
+            <form onSubmit={handleSubmit} className="w-full md:w-1/2 px-4">
+              <div>
+                <label>Email</label>
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none"
+                  placeholder="Your Email"
+                />
+              </div>
+              <div className="mt-4">
+                <label>Password</label>
+                <input
+                  type="password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  className="w-full mt-2 p-3 border rounded-md bg-gray-200 outline-none"
+                  placeholder="Your Password"
+                />
+              </div>
+              <button className="w-full bg-[#EB662B] text-white p-3 mt-4 rounded-md">
+                {loading ? "Loading..." : "Login"}
+              </button>
+              <p className="my-4 text-center">
+                Don't have an account?{" "}
+                <span className="text-[#EB662B]">
+                  <Link to="/signup">Signup</Link>
+                </span>
+              </p>
+            </form>
           </div>
-          <div className="flex flex-col">
-            <label htmlFor="password" className="font-semibold">
-              Password:
-            </label>
-            <input
-              type="password"
-              id="password"
-              className="p-3 rounded border border-black bg-white bg-opacity-80"
-              onChange={handleChange}
-            />
-          </div>
-          <p className="text-blue-700 text-sm hover:underline">
-            <Link to={`/signup`}>Dont have an account? Signup</Link>
-          </p>
-          <button
-            disabled={loading}
-            className="p-3 text-white bg-slate-700 rounded hover:opacity-95"
-          >
-            {loading ? "Loading..." : "Login"}
-          </button>
-          {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
-      </form>
+      </div>
     </div>
   );
 };

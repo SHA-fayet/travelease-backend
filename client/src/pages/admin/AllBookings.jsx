@@ -86,7 +86,7 @@ const AllBookings = () => {
                 <Link to={`/package/${booking?.packageDetails?._id}`}>
                   <img
                     className="w-12 h-12"
-                    src={booking?.packageDetails?.packageImages[0]}
+                    src={`http://localhost:8000/images/${booking?.packageDetails?.packageImages[0]}`}
                     alt="Package Image"
                   />
                 </Link>

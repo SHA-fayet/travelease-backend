@@ -110,7 +110,7 @@ const RatingsReviews = () => {
               >
                 <Link to={`/package/ratings/${pack._id}`}>
                   <img
-                    src={pack?.packageImages[0]}
+                    src={`http://localhost:8000/images/${pack?.packageImages[0]}`}
                     alt="image"
                     className="w-20 h-20 rounded"
                   />
