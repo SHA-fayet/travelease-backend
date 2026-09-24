@@ -17,7 +17,7 @@ import paymentRoutes from "./routes/payment.routes.js";
 import adminRoute from "./routes/admin.route.js";
 import chatbotRouter from "./routes/chatbot.route.js";
 import serviceRoute from "./routes/service.route.js"; 
-import communityRoute from "./routes/community.route.js"; // <-- NEW
+import communityRoute from "./routes/community.route.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,7 +25,25 @@ const __dirname = path.dirname(__filename);
 const app = express();
 connectDB();
 
-app.use(cors({ origin: ["http://localhost:5173", "http://localhost:5174"], credentials: true }));
+// Allowed origins for development and production Vercel deployments
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
+  process.env.CLIENT_URL
+].filter(Boolean);
+
+app.use(cors({ 
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    // Allow localhost or any Vercel preview/production deployment
+    if (allowedOrigins.includes(origin) || origin.endsWith(".vercel.app")) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  }, 
+  credentials: true 
+}));
+
 app.use(express.json());
 app.use(cookieParser());
 app.use("/images", express.static(path.join(__dirname, "uploads")));
@@ -39,8 +57,9 @@ app.use("/api/admin", adminRoute);
 app.use("/api/payment", paymentRoutes); 
 app.use("/api/chatbot", chatbotRouter);
 app.use("/api/services", serviceRoute); 
-app.use("/api/community", communityRoute); // <-- NEW
-app.use("/api/ai", aiRoute); // <-- NEW
+app.use("/api/community", communityRoute);
+app.use("/api/ai", aiRoute);
+
 if (process.env.NODE_ENV_CUSTOM === "production") {
   app.use(express.static(path.join(__dirname, "/client/dist")));
   app.get("*", (req, res) => res.sendFile(path.join(__dirname, "client", "dist", "index.html")));
@@ -48,5 +67,5 @@ if (process.env.NODE_ENV_CUSTOM === "production") {
   app.get("/", (req, res) => res.send("Welcome to TravelEase API"));
 }
 
-const PORT = 8000;
+const PORT = process.env.PORT || 8000;
 app.listen(PORT, () => console.log(`listening on ${PORT}`));
