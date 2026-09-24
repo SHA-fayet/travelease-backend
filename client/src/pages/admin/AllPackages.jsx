@@ -2,6 +2,11 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 
+const getImgUrl = (images) => {
+  if (!images || images.length === 0) return "https://via.placeholder.com/150";
+  return images[0].startsWith("http") ? images[0] : `http://localhost:8000/images/${images[0]}`;
+};
+
 const AllPackages = () => {
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -10,195 +15,71 @@ const AllPackages = () => {
   const [showMoreBtn, setShowMoreBtn] = useState(false);
 
   const getPackages = async () => {
-    setPackages([]);
     try {
       setLoading(true);
-      let url =
-        filter === "offer" //offer
-          ? `/api/package/get-packages?searchTerm=${search}&offer=true`
-          : filter === "latest" //latest
-          ? `/api/package/get-packages?searchTerm=${search}&sort=createdAt`
-          : filter === "top" //top rated
-          ? `/api/package/get-packages?searchTerm=${search}&sort=packageRating`
-          : `/api/package/get-packages?searchTerm=${search}`; //all
-      const res = await fetch(url);
+      const sortQuery = filter === "offer" ? "&offer=true" : filter === "latest" ? "&sort=createdAt" : filter === "top" ? "&sort=packageRating" : "";
+      const res = await fetch(`/api/package/get-packages?searchTerm=${search}${sortQuery}`);
       const data = await res.json();
-      if (data?.success) {
-        setPackages(data?.packages);
-        setLoading(false);
-      } else {
-        setLoading(false);
-        toast.error(data?.message || "Something went wrong!");
-      }
-      if (data?.packages?.length > 8) {
-        setShowMoreBtn(true);
-      } else {
-        setShowMoreBtn(false);
-      }
-    } catch (error) {
-      console.log(error);
-    }
+      if (data?.success) { setPackages(data.packages); setShowMoreBtn(data.packages.length > 8); } 
+      else { toast.error(data?.message); }
+    } catch (error) { console.error(error); } finally { setLoading(false); }
   };
 
-  const onShowMoreSClick = async () => {
-    const numberOfPackages = packages.length;
-    const startIndex = numberOfPackages;
-    let url =
-      filter === "offer" //offer
-        ? `/api/package/get-packages?searchTerm=${search}&offer=true&startIndex=${startIndex}`
-        : filter === "latest" //latest
-        ? `/api/package/get-packages?searchTerm=${search}&sort=createdAt&startIndex=${startIndex}`
-        : filter === "top" //top rated
-        ? `/api/package/get-packages?searchTerm=${search}&sort=packageRating&startIndex=${startIndex}`
-        : `/api/package/get-packages?searchTerm=${search}&startIndex=${startIndex}`; //all
-    const res = await fetch(url);
-    const data = await res.json();
-    if (data?.packages?.length < 9) {
-      setShowMoreBtn(false);
-    }
-    setPackages([...packages, ...data?.packages]);
+  const onShowMoreClick = async () => {
+    try {
+      const sortQuery = filter === "offer" ? "&offer=true" : filter === "latest" ? "&sort=createdAt" : filter === "top" ? "&sort=packageRating" : "";
+      const res = await fetch(`/api/package/get-packages?searchTerm=${search}${sortQuery}&startIndex=${packages.length}`);
+      const data = await res.json();
+      setPackages([...packages, ...data.packages]);
+      setShowMoreBtn(data?.packages?.length >= 9);
+    } catch (error) { console.error(error); }
   };
 
-  useEffect(() => {
-    getPackages();
-  }, [filter, search]);
+  useEffect(() => { getPackages(); }, [filter, search]);
 
   const handleDelete = async (packageId) => {
+    if(!window.confirm("Delete this package permanently?")) return;
     try {
       setLoading(true);
-      const res = await fetch(`/api/package/delete-package/${packageId}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/package/delete-package/${packageId}`, { method: "DELETE" });
       const data = await res.json();
       toast.success(data?.message);
       getPackages();
-      setLoading(false);
-    } catch (error) {
-      console.log(error);
-    }
+    } catch (error) { console.error(error); } finally { setLoading(false); }
   };
 
   return (
-    <>
-      <div className="shadow-xl rounded-lg w-full flex flex-col p-5 justify-center gap-2">
-        {loading && <h1 className="text-center text-lg">Loading...</h1>}
-        {packages && (
-          <>
-            <div>
-              <input
-                className="p-2 rounded border"
-                type="text"
-                placeholder="Search"
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                }}
-              />
-            </div>
-            <div className="my-2 border-y-2 py-2">
-              <ul className="w-full flex justify-around">
-                <li
-                  className={`cursor-pointer hover:scale-95 border rounded-xl p-2 transition-all duration-300 ${
-                    filter === "all" && "bg-blue-500 text-white"
-                  }`}
-                  id="all"
-                  onClick={(e) => {
-                    setFilter(e.target.id);
-                  }}
-                >
-                  All
-                </li>
-                <li
-                  className={`cursor-pointer hover:scale-95 border rounded-xl p-2 transition-all duration-300 ${
-                    filter === "offer" && "bg-blue-500 text-white"
-                  }`}
-                  id="offer"
-                  onClick={(e) => {
-                    setFilter(e.target.id);
-                  }}
-                >
-                  Offer
-                </li>
-                <li
-                  className={`cursor-pointer hover:scale-95 border rounded-xl p-2 transition-all duration-300 ${
-                    filter === "latest" && "bg-blue-500 text-white"
-                  }`}
-                  id="latest"
-                  onClick={(e) => {
-                    setFilter(e.target.id);
-                  }}
-                >
-                  Latest
-                </li>
-                <li
-                  className={`cursor-pointer hover:scale-95 border rounded-xl p-2 transition-all duration-300 ${
-                    filter === "top" && "bg-blue-500 text-white"
-                  }`}
-                  id="top"
-                  onClick={(e) => {
-                    setFilter(e.target.id);
-                  }}
-                >
-                  Top
-                </li>
-              </ul>
-            </div>
-          </>
-        )}
-        {/* packages */}
-        {packages ? (
-          packages.map((pack, i) => {
-            return (
-              <div
-                className="border rounded-lg w-full flex p-3 justify-between items-center hover:scale-[1.02] transition-all duration-300"
-                key={i}
-              >
-                <Link to={`/package/${pack._id}`}>
-                  <img
-                    src={`http://localhost:8000/images/${pack.packageImages[0]}`}
-                    alt="image"
-                    className="w-20 h-20 rounded"
-                  />
-                </Link>
-                <Link to={`/package/${pack._id}`}>
-                  <p className="font-semibold hover:underline">
-                    {pack?.packageName}
-                  </p>
-                </Link>
-                <div className="flex flex-col">
-                  <Link to={`/profile/admin/update-package/${pack._id}`}>
-                    <button
-                      disabled={loading}
-                      className="text-blue-600 hover:underline"
-                    >
-                      {loading ? "Loading..." : "Edit"}
-                    </button>
-                  </Link>
-                  <button
-                    disabled={loading}
-                    onClick={() => handleDelete(pack?._id)}
-                    className="text-red-600 hover:underline"
-                  >
-                    {loading ? "Loading..." : "Delete"}
-                  </button>
-                </div>
-              </div>
-            );
-          })
-        ) : (
-          <h1 className="text-center text-2xl">No Packages Yet!</h1>
-        )}
-        {showMoreBtn && (
-          <button
-            onClick={onShowMoreSClick}
-            className="text-sm bg-green-700 text-white hover:underline p-2 m-3 rounded text-center w-max"
-          >
-            Show More
+    <div className="w-full flex flex-col gap-6">
+      <input className="w-full border-2 border-gray-200 rounded-lg p-3 outline-none focus:border-[#EB662B]" type="text" placeholder="Search Packages..." value={search} onChange={(e) => setSearch(e.target.value)} />
+      
+      <div className="flex gap-2 border-b pb-4">
+        {["all", "offer", "latest", "top"].map((f) => (
+          <button key={f} onClick={() => setFilter(f)} className={`px-4 py-2 rounded-full font-bold capitalize transition ${filter === f ? "bg-[#EB662B] text-white" : "bg-white border text-gray-600 hover:bg-gray-100"}`}>
+            {f}
           </button>
-        )}
+        ))}
       </div>
-    </>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {packages.map((pack) => (
+          <div key={pack._id} className="bg-white rounded-xl shadow-sm border overflow-hidden flex flex-col">
+            <Link to={`/package/${pack._id}`}>
+              <img src={getImgUrl(pack.packageImages)} alt="Package" className="w-full h-48 object-cover hover:scale-105 transition duration-300" />
+            </Link>
+            <div className="p-4 flex flex-col gap-2">
+              <Link to={`/package/${pack._id}`}><h3 className="font-bold text-lg text-gray-900 hover:text-[#EB662B]">{pack.packageName}</h3></Link>
+              <p className="text-gray-500 text-sm">📍 {pack.packageDestination}</p>
+              <p className="font-black text-[#EB662B] text-xl mt-2">৳ {pack.packagePrice}</p>
+              <div className="flex gap-2 mt-4 pt-4 border-t">
+                <Link to={`/profile/admin/update-package/${pack._id}`} className="flex-1 text-center bg-gray-100 text-gray-800 py-2 rounded font-bold hover:bg-gray-200">Edit</Link>
+                <button onClick={() => handleDelete(pack._id)} className="flex-1 bg-red-50 text-red-600 py-2 rounded font-bold hover:bg-red-600 hover:text-white transition">Delete</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {showMoreBtn && <button onClick={onShowMoreClick} className="mx-auto mt-4 px-8 py-3 bg-[#6358DC] text-white font-bold rounded-lg hover:opacity-90">Load More</button>}
+    </div>
   );
 };
-
 export default AllPackages;

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import emailjs from "emailjs-com";
+import { toast } from "react-toastify"; // Added professional toast notifications
 
 const Contact = () => {
   const [formData, setFormData] = useState({
@@ -9,10 +10,18 @@ const Contact = () => {
     message: "",
   });
 
-  const [isSent, setIsSent] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const sendEmail = (e) => {
     e.preventDefault();
+    
+    // Prevent empty submissions
+    if (!formData.user_name || !formData.user_email || !formData.message) {
+      return toast.error("Please fill out all fields.");
+    }
+
+    setLoading(true);
+
     emailjs
       .send(
         "service_t7sng6h",
@@ -22,11 +31,14 @@ const Contact = () => {
       )
       .then(
         () => {
-          setIsSent(true);
+          setLoading(false);
+          toast.success("Message sent successfully! We will get back to you soon.");
           setFormData({ user_name: "", user_email: "", message: "" });
         },
         (error) => {
+          setLoading(false);
           console.error("FAILED...", error);
+          toast.error("Failed to send message. Please try again later.");
         }
       );
   };
@@ -53,7 +65,7 @@ const Contact = () => {
               type="text"
               name="user_name"
               required
-              className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6358DC]"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6358DC] transition"
               placeholder="Enter your name"
               value={formData.user_name}
               onChange={(e) =>
@@ -67,7 +79,7 @@ const Contact = () => {
               type="email"
               name="user_email"
               required
-              className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6358DC]"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6358DC] transition"
               placeholder="Enter your email"
               value={formData.user_email}
               onChange={(e) =>
@@ -83,7 +95,7 @@ const Contact = () => {
               name="message"
               rows="5"
               required
-              className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6358DC]"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6358DC] transition resize-none"
               placeholder="Enter your message"
               value={formData.message}
               onChange={(e) =>
@@ -94,16 +106,14 @@ const Contact = () => {
           <div className="text-center">
             <motion.button
               type="submit"
+              disabled={loading}
               whileTap={{ scale: 0.95 }}
-              className="bg-[#EB662B] text-white font-semibold px-6 py-3 rounded-lg  transition"
+              className={`text-white font-semibold px-8 py-3 rounded-lg shadow-md transition ${
+                loading ? "bg-gray-400 cursor-not-allowed" : "bg-[#EB662B] hover:bg-[#d55923]"
+              }`}
             >
-              Send Message
+              {loading ? "Sending..." : "Send Message"}
             </motion.button>
-            {isSent && (
-              <p className="text-green-600 font-medium mt-3">
-                Message sent successfully!
-              </p>
-            )}
           </div>
         </form>
       </motion.div>

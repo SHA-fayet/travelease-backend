@@ -1,88 +1,71 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import "./styles/Home.css";
-import { FaCalendar, FaSearch, FaStar } from "react-icons/fa";
+import { FaCalendar, FaStar } from "react-icons/fa";
 import { FaRankingStar } from "react-icons/fa6";
 import { LuBadgePercent } from "react-icons/lu";
-import { useNavigate } from "react-router";
+import { useNavigate } from "react-router-dom";
 import Services from "./components/Services";
 import Top from "./components/Top";
 import Booking from "./components/Booking";
 import HeroImage from "./components/HeroImage";
 import Offers from "./components/Offers";
 import SingleCard from "./components/SingleCard";
+import AIPromoBanner from "./components/AIPromoBanner"; // <-- NEW AI BANNER IMPORT
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
+import { toast } from "react-toastify";
+import { fetchJson, filterBangladeshPackages } from "../utils/media";
 
 const Home = () => {
   const navigate = useNavigate();
   const [topPackages, setTopPackages] = useState([]);
   const [latestPackages, setLatestPackages] = useState([]);
   const [offerPackages, setOfferPackages] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  const getTopPackages = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await fetch(
-        "/api/package/get-packages?sort=packageRating&limit=8"
-      );
-      const data = await res.json();
-      if (data?.success) {
-        setTopPackages(data?.packages);
-        setLoading(false);
-      } else {
-        setLoading(false);
-        alert(data?.message || "Something went wrong!");
-      }
-    } catch (error) {
-      console.log(error);
-    }
-  }, [topPackages]);
-
-  const getLatestPackages = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await fetch(
-        "/api/package/get-packages?sort=createdAt&limit=8"
-      );
-      const data = await res.json();
-      if (data?.success) {
-        setLatestPackages(data?.packages);
-        setLoading(false);
-      } else {
-        setLoading(false);
-        alert(data?.message || "Something went wrong!");
-      }
-    } catch (error) {
-      console.log(error);
-    }
-  }, [latestPackages]);
-
-  const getOfferPackages = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await fetch(
-        "/api/package/get-packages?sort=createdAt&offer=true&limit=6"
-      );
-      const data = await res.json();
-      if (data?.success) {
-        setOfferPackages(data?.packages);
-        setLoading(false);
-      } else {
-        setLoading(false);
-        alert(data?.message || "Something went wrong!");
-      }
-    } catch (error) {
-      console.log(error);
-    }
-  }, [offerPackages]);
-
   useEffect(() => {
-    getTopPackages();
-    getLatestPackages();
-    getOfferPackages();
+    let cancelled = false;
+
+    const loadHomepagePackages = async () => {
+      setLoading(true);
+      try {
+        const [topData, latestData, offerData] = await Promise.all([
+          fetchJson("/api/package/get-packages?sort=packageRating&order=desc&limit=20"),
+          fetchJson("/api/package/get-packages?sort=createdAt&order=desc&limit=20"),
+          fetchJson("/api/package/get-packages?sort=createdAt&order=desc&offer=true&limit=20"),
+        ]);
+
+        if (cancelled) return;
+
+        setTopPackages(filterBangladeshPackages(topData?.packages || []));
+        setLatestPackages(filterBangladeshPackages(latestData?.packages || []));
+        setOfferPackages(filterBangladeshPackages(offerData?.packages || []));
+      } catch (error) {
+        console.error("Failed to load homepage packages:", error);
+        if (!cancelled) {
+          toast.error("Unable to load travel packages right now.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadHomepagePackages();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  const handleSearch = () => {
+    const trimmedSearch = search.trim();
+    if (!trimmedSearch) {
+      navigate("/search");
+      return;
+    }
+    navigate(`/search?searchTerm=${encodeURIComponent(trimmedSearch)}`);
+  };
 
   return (
     <div className="main w-full">
@@ -91,166 +74,112 @@ const Home = () => {
       <Services />
       <Top />
       <Booking />
-      <div className="w-full flex flex-col">
-        <div className="backaground_image w-full flex flex-col">
-          <h2 className="hidden lg:block text-3xl md:text-4xl font-bold text-yellow-500 mt-16 ml-4">
-            Find Your Perfect Trip
-          </h2>
-          <p className=" hidden lg:block text-white text-lg max-w-md mt-3 ml-4">
-            Explore top-rated destinations, discover the best travel offers, and
-            stay up to date with the latest trips. We make booking your next
-            adventure simple and fast.
-          </p>
-        </div>
-        <div className="top-part w-full mx-auto gap-2 flex flex-col items-center justify-center ">
-          <h1 className="text-white text-4xl text-center font-bold underline mb-2">
-            Discover the World, One Journey at a Time
-          </h1>
-          <h1 className="text-white text-sm text-center xsm:text-lg font-semibold">
-            Make Your Travel Dream Come True With Trevo
-          </h1>
-          <div className="w-full flex justify-center items-center gap-2 mt-8">
+
+      {/* MASSIVE AI DISCOVERY CTA FOR DEFENSE DEMONSTRATION */}
+      <AIPromoBanner />
+
+      <div className="w-full flex flex-col my-10 px-4 md:px-8">
+        {/* Cleaned Search & Banner Section */}
+        <div className="w-full bg-gradient-to-r from-slate-900 to-indigo-950 rounded-2xl p-8 md:p-12 text-white shadow-xl flex flex-col items-center text-center gap-6">
+          <div className="max-w-2xl flex flex-col gap-2">
+            <h2 className="text-3xl md:text-4xl font-extrabold text-yellow-400">
+              Discover Bangladesh Your Way
+            </h2>
+            <p className="text-gray-200 text-sm md:text-base">
+              Explore local destinations, compare travel packages, discover special offers, and plan your next Bangladesh adventure with TravelEase.
+            </p>
+          </div>
+
+          {/* Search Bar Input & Button */}
+          <div className="w-full max-w-xl flex items-center bg-white rounded-full p-1.5 shadow-lg">
             <input
               type="text"
-              className="rounded-lg outline-none w-[230px] sm:w-2/5 p-2 border border-black bg-opacity-40 bg-white text-white placeholder:text-white font-semibold"
-              placeholder="Search"
+              className="flex-1 px-4 py-2 outline-none text-gray-800 bg-transparent placeholder:text-gray-400 text-sm md:text-base"
+              placeholder="Search Bangladesh destinations or packages..."
               value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSearch();
               }}
             />
             <button
-              onClick={() => {
-                navigate(`/search?searchTerm=${search}`);
-              }}
-              className="bg-white w-10 h-10 flex justify-center items-center text-xl font-semibold rounded-full hover:scale-95"
+              type="button"
+              onClick={handleSearch}
+              className="bg-[#EB662B] text-white px-6 py-2.5 rounded-full font-semibold hover:opacity-95 transition text-sm md:text-base shadow"
             >
               Go
-              {/* <FaSearch className="" /> */}
             </button>
           </div>
 
-          <div className="w-[90%] max-w-xl flex justify-center mt-10">
+          {/* Quick Filter Buttons */}
+          <div className="w-full max-w-2xl flex flex-wrap justify-center gap-2 mt-2">
             <button
-              onClick={() => {
-                navigate("/search?offer=true");
-              }}
-              className="flex items-center justify-around gap-x-1 bg-slate-400 text-white p-2 py-1 text-[8px] xxsm:text-sm sm:text-lg border-e border-white rounded-s-full flex-1 hover:scale-105 transition-all duration-150"
+              type="button"
+              onClick={() => navigate("/search?offer=true")}
+              className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-full text-xs md:text-sm font-medium transition"
             >
-              Special Offers
-              <LuBadgePercent className="text-2xl" />
+              <LuBadgePercent className="text-lg text-yellow-400" /> Special Offers
             </button>
             <button
-              onClick={() => {
-                navigate("/search?sort=packageRating");
-              }}
-              className="flex items-center justify-around gap-x-1 bg-slate-400 text-white p-2 py-1 text-[8px] xxsm:text-sm sm:text-lg border-x border-white flex-1 hover:scale-105 transition-all duration-150"
+              type="button"
+              onClick={() => navigate("/search?sort=packageRating")}
+              className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-full text-xs md:text-sm font-medium transition"
             >
-              Top Rated
-              <FaStar className="text-2xl" />
+              <FaStar className="text-yellow-400" /> Top Rated
             </button>
             <button
-              onClick={() => {
-                navigate("/search?sort=createdAt");
-              }}
-              className="flex items-center justify-around gap-x-1 bg-slate-400 text-white p-2 py-1 text-[8px] xxsm:text-sm sm:text-lg border-x border-white flex-1 hover:scale-105 transition-all duration-150"
+              type="button"
+              onClick={() => navigate("/search?sort=createdAt")}
+              className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-full text-xs md:text-sm font-medium transition"
             >
-              Latest
-              <FaCalendar className="text-lg" />
+              <FaCalendar /> Latest
             </button>
             <button
-              onClick={() => {
-                navigate("/search?sort=packageTotalRatings");
-              }}
-              className="flex items-center justify-around gap-x-1 bg-slate-400 text-white p-2 py-1 text-[8px] xxsm:text-sm sm:text-lg border-s border-white rounded-e-full flex-1 hover:scale-105 transition-all duration-150"
+              type="button"
+              onClick={() => navigate("/search?sort=packageTotalRatings")}
+              className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-full text-xs md:text-sm font-medium transition"
             >
-              Most Rated
-              <FaRankingStar className="text-2xl" />
+              <FaRankingStar className="text-yellow-400" /> Most Rated
             </button>
           </div>
         </div>
-        {/* main page */}
-        <div className="main p-6 flex flex-col gap-5">
-          {loading && <h1 className="text-center text-2xl">Loading...</h1>}
-          {!loading &&
-            topPackages.length === 0 &&
-            latestPackages.length === 0 &&
-            offerPackages.length === 0 && (
-              <h1 className="text-center text-2xl">No Packages Yet!</h1>
-            )}
-          {/* Top Rated */}
+
+        {/* Package Sections */}
+        <div className="main py-10 flex flex-col gap-10">
+          {loading && <h2 className="text-center text-xl py-6">Loading Bangladesh packages...</h2>}
+
           {!loading && topPackages.length > 0 && (
-            <>
-              <h1 className="text-2xl font-semibold">Top Packages</h1>
-              <motion.div
-                className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3"
-                initial="hidden"
-                whileInView="show"
-                viewport={{ once: true, amount: 0.1 }}
-                variants={{
-                  hidden: {},
-                  show: {
-                    transition: {
-                      staggerChildren: 0.1, // delay between cards
-                    },
-                  },
-                }}
-              >
-                {topPackages.map((packageData, i) => {
-                  return <SingleCard key={i} packageData={packageData} />;
-                })}
-              </motion.div>
-              <div className="bg-[#EB662B] w-full h-[162px] flex flex-col md:flex-row items-center justify-around rounded-md">
-                <h2 className="text-white text-base md:text-lg font-semibold">
-                  Early Booking Discounts Up To 50%!
-                </h2>
-                <Link
-                  to="/search?offer=true"
-                  className="text-[#EB662B] bg-white px-6 py-2 rounded-md"
-                >
-                  Book Now
-                </Link>
+            <div className="flex flex-col gap-4">
+              <h2 className="text-2xl font-bold text-gray-800">Top Bangladesh Packages</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {topPackages.slice(0, 8).map((pkg) => (
+                  <SingleCard key={pkg?._id} packageData={pkg} />
+                ))}
               </div>
-            </>
+            </div>
           )}
-          {/* Top Rated */}
-          {/* latest */}
+
           {!loading && latestPackages.length > 0 && (
-            <>
-              <h1 className="text-2xl font-semibold">Latest Packages</h1>
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3 my-1">
-                {latestPackages.map((packageData, i) => {
-                  return <SingleCard key={i} packageData={packageData} />;
-                })}
+            <div className="flex flex-col gap-4">
+              <h2 className="text-2xl font-bold text-gray-800">Latest Bangladesh Packages</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {latestPackages.slice(0, 8).map((pkg) => (
+                  <SingleCard key={pkg?._id} packageData={pkg} />
+                ))}
               </div>
-              <div className="bg-[#EB662B] w-full h-[162px] flex flex-col md:flex-row items-center justify-around rounded-md px-1">
-                <h2 className="text-white text-base md:text-lg font-semibold">
-                  Check our latest packages and book now
-                </h2>
-                <Link
-                  to={"/search"}
-                  className="text-[#EB662B] bg-white px-6 py-2 rounded-md"
-                >
-                  Book Now
-                </Link>
-              </div>
-            </>
+            </div>
           )}
-          {/* latest */}
-          {/* offer */}
+
           {!loading && offerPackages.length > 0 && (
-            <>
-              <h1 className="text-2xl text-[#05073C] font-semibold">
-                Special Offers
-              </h1>
-              <div className="grid gird-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3 my-3">
-                {offerPackages.map((packageData, i) => {
-                  return <Offers key={i} packageData={packageData} />;
-                })}
+            <div className="flex flex-col gap-4">
+              <h2 className="text-2xl font-bold text-gray-800">Special Offers in Bangladesh</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {offerPackages.slice(0, 8).map((pkg) => (
+                  <Offers key={pkg?._id} packageData={pkg} />
+                ))}
               </div>
-            </>
+            </div>
           )}
-          {/* offer */}
         </div>
       </div>
     </div>

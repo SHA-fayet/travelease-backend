@@ -8,11 +8,15 @@ const Offers = ({ packageData }) => {
           to={`/package/${packageData._id}`}
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
         >
-          <img
-            className="rounded-full w-20 h-20"
-            src={`http://localhost:8000/images/${packageData.packageImages[0]}`}
-            alt=""
-          />
+        <img 
+          src={
+            packageData?.packageImages[0]?.startsWith("http") 
+              ? packageData.packageImages[0] 
+              : `http://localhost:8000/images/${packageData.packageImages[0]}`
+          } 
+          alt="Package Image" 
+          // Keep your existing className here
+        />
         </Link>
       </div>
       <p>

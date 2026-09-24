@@ -1,42 +1,28 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router-dom";
 import { Swiper, SwiperSlide } from "swiper/react";
 import SwiperCore from "swiper";
-import { Navigation } from "swiper/modules";
+import { Navigation, Autoplay } from "swiper/modules";
 import "swiper/css/bundle";
 import Rating from "@mui/material/Rating";
 import { useSelector } from "react-redux";
 import RatingCard from "./RatingCard";
 import { toast } from "react-toastify";
 import MapModal from "./components/MapModal";
-import { Autoplay } from "swiper/modules";
-import { FaClock } from "react-icons/fa";
+import { FaClock, FaArrowRight } from "react-icons/fa";
+
 const Package = () => {
   const [showMap, setShowMap] = useState(false);
   SwiperCore.use([Navigation]);
+  
   const { currentUser } = useSelector((state) => state.user);
   const params = useParams();
   const navigate = useNavigate();
-  const [packageData, setPackageData] = useState({
-    packageName: "",
-    packageDescription: "",
-    packageDestination: "",
-    packageDays: 1,
-    packageNights: 1,
-    packageAccommodation: "",
-    packageTransportation: "",
-    packageMeals: "",
-    packageActivities: "",
-    packagePrice: 500,
-    packageDiscountPrice: 0,
-    packageOffer: false,
-    packageRating: 0,
-    packageTotalRatings: 0,
-    packageImages: [],
-  });
-  const [loading, setLoading] = useState(false);
+  
+  const [packageData, setPackageData] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [copied, setCopied] = useState(false);
+  
   const [ratingsData, setRatingsData] = useState({
     rating: 0,
     review: "",
@@ -45,6 +31,7 @@ const Package = () => {
     username: currentUser?.username,
     userProfileImg: currentUser?.avatar,
   });
+  
   const [packageRatings, setPackageRatings] = useState([]);
   const [ratingGiven, setRatingGiven] = useState(false);
 
@@ -54,73 +41,15 @@ const Package = () => {
       const res = await fetch(`/api/package/get-package-data/${params?.id}`);
       const data = await res.json();
       if (data?.success) {
-        setPackageData({
-          packageName: data?.packageData?.packageName,
-          packageDescription: data?.packageData?.packageDescription,
-          packageDestination: data?.packageData?.packageDestination,
-          packageDays: data?.packageData?.packageDays,
-          packageNights: data?.packageData?.packageNights,
-          packageAccommodation: data?.packageData?.packageAccommodation,
-          packageTransportation: data?.packageData?.packageTransportation,
-          packageMeals: data?.packageData?.packageMeals,
-          packageActivities: data?.packageData?.packageActivities,
-          packagePrice: data?.packageData?.packagePrice,
-          packageDiscountPrice: data?.packageData?.packageDiscountPrice,
-          packageOffer: data?.packageData?.packageOffer,
-          packageRating: data?.packageData?.packageRating,
-          packageTotalRatings: data?.packageData?.packageTotalRatings,
-          packageImages: data?.packageData?.packageImages,
-        });
-        setLoading(false);
+        setPackageData(data.packageData);
       } else {
         setError(data?.message || "Something went wrong!");
-        setLoading(false);
       }
     } catch (error) {
-      console.log(error);
-    }
-  };
-
-  const giveRating = async () => {
-    checkRatingGiven();
-    if (ratingGiven) {
-      toast.error("You already submittd your rating!");
-      return;
-    }
-    if (ratingsData.rating === 0 && ratingsData.review === "") {
-      toast.error("Atleast 1 field is required!");
-      return;
-    }
-    if (
-      ratingsData.rating === 0 &&
-      ratingsData.review === "" &&
-      !ratingsData.userRef
-    ) {
-      toast.error("All fields are required!");
-      return;
-    }
-    try {
-      setLoading(true);
-      const res = await fetch("/api/rating/give-rating", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(ratingsData),
-      });
-      const data = await res.json();
-      if (data?.success) {
-        setLoading(false);
-        toast.success(data?.message);
-        getPackageData();
-        getRatings();
-        checkRatingGiven();
-      } else {
-        setLoading(false);
-        toast.error(data?.message || "Something went wrong!");
-      }
-    } catch (error) {
-      console.log(error);
+      console.error(error);
+      setError("Failed to fetch package details.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -131,22 +60,59 @@ const Package = () => {
       if (data) {
         setPackageRatings(data);
       } else {
-        setPackageRatings("No ratings yet!");
+        setPackageRatings([]);
       }
     } catch (error) {
-      console.log(error);
+      console.error(error);
     }
   };
 
   const checkRatingGiven = async () => {
     try {
-      const res = await fetch(
-        `/api/rating/rating-given/${currentUser?._id}/${params?.id}`
-      );
+      const res = await fetch(`/api/rating/rating-given/${currentUser?._id}/${params?.id}`);
       const data = await res.json();
       setRatingGiven(data?.given);
     } catch (error) {
-      console.log(error);
+      console.error(error);
+    }
+  };
+
+  const giveRating = async () => {
+    await checkRatingGiven();
+    if (ratingGiven) {
+      toast.error("You already submitted your rating!");
+      return;
+    }
+    if (ratingsData.rating === 0 && ratingsData.review === "") {
+      toast.error("At least 1 field is required!");
+      return;
+    }
+    if (ratingsData.rating === 0 && ratingsData.review === "" && !ratingsData.userRef) {
+      toast.error("All fields are required!");
+      return;
+    }
+    try {
+      setLoading(true);
+      const res = await fetch("/api/rating/give-rating", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(ratingsData),
+      });
+      const data = await res.json();
+      if (data?.success) {
+        toast.success(data?.message);
+        setRatingsData({ ...ratingsData, rating: 0, review: "" });
+        getPackageData();
+        getRatings();
+        checkRatingGiven();
+      } else {
+        toast.error(data?.message || "Something went wrong!");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to submit rating.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -159,118 +125,112 @@ const Package = () => {
       checkRatingGiven();
     }
   }, [params.id, currentUser]);
+
+  if (loading) {
+    return (
+      <div className="w-full flex justify-center py-20">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#EB662B]"></div>
+      </div>
+    );
+  }
+
+  if (error || !packageData) {
+    return (
+      <div className="w-full text-center py-20">
+        <h2 className="text-2xl font-bold text-red-600">{error || "Package not found"}</h2>
+        <button onClick={() => navigate("/search")} className="mt-4 px-6 py-2 bg-[#EB662B] text-white rounded-lg">
+          Browse Other Packages
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-full">
-      {loading && (
-        <p className="text-center font-semibold" id="loading">
-          Loading...
-        </p>
-      )}
-
-      {packageData && !loading && !error && (
-        <div className="w-full max-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          {/* left div */}
-          <div className="w-full md:w-1/2 flex flex-col items-center ">
-            <h1 className="text-[#05073C] text-lg md:text-3xl text-center md:text-start font-semibold">
-              {packageData.packageName}
-            </h1>
-            <div className="flex items-center justify-between gap-10 my-3">
-              <p className="text-[#05073C] text-lg font-semibold">
-                {packageData.packageDestination}
-              </p>
-              <p className="text-[#05073C] text-lg font-semibold">
-                ${packageData.packagePrice}
-              </p>
-            </div>
-
-            {/* days & nights */}
-            {(+packageData?.packageDays > 0 ||
-              +packageData?.packageNights > 0) && (
-              <p className="flex items-center gap-2">
-                <FaClock />
-                {+packageData?.packageDays > 0 &&
-                  (+packageData?.packageDays > 1
-                    ? packageData?.packageDays + " Days"
-                    : packageData?.packageDays + " Day")}
-                {+packageData?.packageDays > 0 &&
-                  +packageData?.packageNights > 0 &&
-                  " - "}
-                {+packageData?.packageNights > 0 &&
-                  (+packageData?.packageNights > 1
-                    ? packageData?.packageNights + " Nights"
-                    : packageData?.packageNights + " Night")}
-              </p>
-            )}
-            {/* rating */}
-            {packageData?.packageTotalRatings > 0 && (
-              <div className="flex items-center justify-center my-2">
-                <Rating
-                  value={packageData?.packageRating || 0}
-                  readOnly
-                  precision={0.1}
-                />
-                <p>({packageData?.packageTotalRatings})</p>
-              </div>
-            )}
-
-            <div className="flex flex-col my-6">
-              <div className="flex gap-5 items-center my-2">
-                <h4 className="text-gray-800 text-xl font-semibold">
-                  Activities:
-                </h4>
-                <p>{packageData?.packageActivities}</p>
-              </div>
-              <div className="flex gap-5 items-center my-2">
-                <h4 className="text-gray-800 text-xl font-semibold">Meals:</h4>
-                <p>{packageData?.packageMeals}</p>
-              </div>
-              <div className="flex gap-5 items-center my-2">
-                <h4 className="text-gray-800 text-xl font-semibold">
-                  Transportation:
-                </h4>
-                <p>{packageData?.packageTransportation}</p>
-              </div>
-            </div>
+    <div className="w-full max-w-7xl mx-auto px-4 md:px-8 py-8">
+      {/* Top Section: Details & Slider */}
+      <div className="w-full flex flex-col md:flex-row items-start justify-between gap-10">
+        
+        {/* Left: Package Info */}
+        <div className="w-full md:w-1/2 flex flex-col items-start gap-4">
+          <h1 className="text-[#05073C] text-2xl md:text-4xl font-extrabold leading-tight">
+            {packageData?.packageName}
+          </h1>
+          
+          <div className="w-full flex items-center justify-between mt-2 border-b pb-4">
+            <p className="text-gray-600 text-lg font-medium flex items-center gap-2">
+              <span className="text-[#EB662B]">📍</span> {packageData?.packageDestination}
+            </p>
+            <p className="text-[#EB662B] text-2xl font-black">
+              ${packageData?.packageOffer && packageData?.packageDiscountPrice > 0 ? packageData?.packageDiscountPrice : packageData?.packagePrice}
+            </p>
           </div>
 
-          <div className="w-full md:w-1/2">
+          {(Number(packageData?.packageDays) > 0 || Number(packageData?.packageNights) > 0) && (
+            <div className="flex items-center gap-2 text-gray-700 font-medium bg-orange-50 px-4 py-2 rounded-lg">
+              <FaClock className="text-[#EB662B]" />
+              {Number(packageData?.packageDays) > 0 && `${packageData?.packageDays} Day${packageData?.packageDays > 1 ? 's' : ''}`}
+              {(Number(packageData?.packageDays) > 0 && Number(packageData?.packageNights) > 0) && " - "}
+              {Number(packageData?.packageNights) > 0 && `${packageData?.packageNights} Night${packageData?.packageNights > 1 ? 's' : ''}`}
+            </div>
+          )}
+          
+          {(packageData?.packageTotalRatings || 0) > 0 && (
+            <div className="flex items-center gap-2 my-1">
+              <Rating value={packageData?.packageRating || 0} readOnly precision={0.1} />
+              <span className="text-gray-600 font-medium">({packageData?.packageTotalRatings} reviews)</span>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-4 w-full mt-4 bg-gray-50 p-6 rounded-xl border">
+            <div className="flex flex-col gap-1">
+              <h4 className="text-gray-900 font-bold uppercase text-sm tracking-wider">Activities</h4>
+              <p className="text-gray-700">{packageData?.packageActivities || "Not specified"}</p>
+            </div>
+            <div className="flex flex-col gap-1 border-t pt-3">
+              <h4 className="text-gray-900 font-bold uppercase text-sm tracking-wider">Meals</h4>
+              <p className="text-gray-700">{packageData?.packageMeals || "Not specified"}</p>
+            </div>
+            <div className="flex flex-col gap-1 border-t pt-3">
+              <h4 className="text-gray-900 font-bold uppercase text-sm tracking-wider">Transportation</h4>
+              <p className="text-gray-700">{packageData?.packageTransportation || "Not specified"}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Image Slider */}
+        <div className="w-full md:w-1/2">
+          {packageData?.packageImages?.length > 0 ? (
             <Swiper
-              modules={[Autoplay]}
-              autoplay={{
-                delay: 2500,
-                disableOnInteraction: false,
-              }}
-              loop={true}
-              className="w-full h-[300px] md:h-[400px]"
+              modules={[Autoplay, Navigation]}
+              navigation
+              autoplay={{ delay: 3000, disableOnInteraction: false }}
+              loop={packageData.packageImages.length > 1}
+              className="w-full h-[350px] md:h-[450px] rounded-2xl shadow-lg"
             >
               {packageData.packageImages.map((img, i) => (
                 <SwiperSlide key={i}>
                   <img
-                    src={`http://localhost:8000/images/${img}`}
-                    alt={`slide-${i}`}
-                    className="w-full h-full object-cover rounded-xl" // rounded-xl for smooth rounded corners
+                    src={img?.startsWith("http") ? img : `http://localhost:8000/images/${img}`}
+                    alt={`${packageData?.packageName} - image ${i + 1}`}
+                    className="w-full h-full object-cover"
                   />
                 </SwiperSlide>
               ))}
             </Swiper>
-          </div>
+          ) : (
+            <div className="w-full h-[350px] md:h-[450px] rounded-2xl bg-gray-200 flex items-center justify-center">
+              <p className="text-gray-500">No images available</p>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
-      <div className="w-full max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-10 py-16 px-4">
-        {/* Left div */}
-        <div className="w-full md:w-1/2 flex flex-col items-start gap-6 mt-12">
-          <p className="text-gray-800 text-2xl font-semibold">Description</p>
-          <p className="text-gray-700 leading-relaxed">
-            {packageData?.packageDescription.length > 280 ? (
-              <>
-                <span id="desc">
-                  {packageData?.packageDescription.substring(0, 150)}...
-                </span>
-              </>
-            ) : (
-              <>{packageData?.packageDescription}</>
-            )}
+      {/* Middle Section: Description & Booking */}
+      <div className="w-full flex flex-col md:flex-row items-start justify-between gap-10 py-12 mt-8 border-t">
+        <div className="w-full md:w-[60%] flex flex-col items-start gap-4">
+          <h2 className="text-gray-900 text-2xl font-bold">About This Trip</h2>
+          <p className="text-gray-700 leading-relaxed text-justify">
+            {packageData?.packageDescription || "No description provided."}
           </p>
 
           <button
@@ -279,104 +239,93 @@ const Package = () => {
               if (currentUser) {
                 navigate(`/booking/${params?.id}`);
               } else {
+                toast.info("Please login to book a package");
                 navigate("/login");
               }
             }}
-            className="w-[200px] bg-[#EB662B] text-white rounded p-3 hover:opacity-95 transition"
+            className="mt-6 w-[200px] bg-[#EB662B] text-white font-bold text-lg rounded-xl p-4 shadow-md hover:bg-orange-700 hover:shadow-lg transition transform hover:-translate-y-1"
           >
-            Book
+            Book Now
           </button>
         </div>
 
-        {/* Right div */}
-        <div className="w-full md:w-1/2 text-gray-700 leading-relaxed  mb-6 flex flex-col gap-4">
-          <h4 className="text-gray-800 text-2xl font-semibold">
-            Accommodation
-          </h4>
-          <p>{packageData?.packageAccommodation}</p>
+        <div className="w-full md:w-[35%] flex flex-col gap-4 bg-gray-50 p-6 rounded-xl border">
+          <h2 className="text-gray-900 text-xl font-bold border-b pb-2">Accommodation Details</h2>
+          <p className="text-gray-700 leading-relaxed">
+            {packageData?.packageAccommodation || "Accommodation details not specified."}
+          </p>
+          <button 
+            onClick={() => setShowMap(true)}
+            className="mt-4 text-[#EB662B] font-semibold hover:underline flex items-center gap-2"
+          >
+            📍 View Destination on Map
+          </button>
         </div>
       </div>
-      <hr className="border border-[#EB662B]" />
-      {/* give rating/review */}
-      <div className="w-full flex flex-col py-16 items-center">
-        {packageRatings && (
-          <>
-            <h4 className="text-xl">Rating/Reviews:</h4>
-            <div
-              className={`w-full sm:max-w-[640px] gap-2 ${
-                !currentUser || ratingGiven
-                  ? "hidden"
-                  : "flex flex-col items-center"
-              } `}
-            >
-              <Rating
-                name="simple-controlled"
-                className="w-max"
-                value={ratingsData?.rating}
-                onChange={(e, newValue) => {
-                  setRatingsData({
-                    ...ratingsData,
-                    rating: newValue,
-                  });
-                }}
-              />
-              <textarea
-                className="w-full resize-none p-3 border border-black rounded"
-                rows={3}
-                placeholder="Review"
-                value={ratingsData?.review}
-                onChange={(e) => {
-                  setRatingsData({
-                    ...ratingsData,
-                    review: e.target.value,
-                  });
-                }}
-              ></textarea>
-              <button
-                disabled={
-                  (ratingsData.rating === 0 && ratingsData.review === "") ||
-                  loading
-                }
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  giveRating();
-                }}
-                className="w-full p-2 bg-[#EB662B] text-white rounded disabled:opacity-80 hover:opacity-95"
-              >
-                {loading ? "Loading..." : "Submit"}
-              </button>
-              <hr />
-            </div>
-
-            <div className="mt-3 w-full gap-2 grid 2xl:grid-cols-6 xl:grid-cols-5 xlplus:grid-cols-4 lg:grid-cols-3 md:grid-cols-2">
-              <RatingCard packageRatings={packageRatings} />
-              {packageData.packageTotalRatings > 4 && (
-                <button
-                  onClick={() => navigate(`/package/ratings/${params?.id}`)}
-                  className="flex items-center justify-center text-lg gap-2 p-2 rounded border hover:bg-slate-500 hover:text-white"
-                >
-                  View All <FaArrowRight />
-                </button>
-              )}
-            </div>
-          </>
-        )}
-        {(!currentUser || currentUser === null) && (
+      
+      <hr className="border-t border-gray-200 my-8" />
+      
+      {/* Bottom Section: Reviews */}
+      <div className="w-full flex flex-col items-center pb-12">
+        <h2 className="text-2xl font-bold text-gray-900 mb-8">Ratings & Reviews</h2>
+        
+        {/* Review Form */}
+        <div className={`w-full max-w-2xl bg-white p-6 rounded-xl shadow-sm border mb-10 ${(!currentUser || ratingGiven) ? "hidden" : "flex flex-col items-center"}`}>
+          <h3 className="text-lg font-semibold mb-4">Leave a Review</h3>
+          <Rating
+            name="simple-controlled"
+            size="large"
+            value={ratingsData?.rating}
+            onChange={(e, newValue) => setRatingsData({ ...ratingsData, rating: newValue })}
+          />
+          <textarea
+            className="w-full mt-4 p-4 border border-gray-300 rounded-lg outline-none focus:border-[#EB662B] resize-none"
+            rows={4}
+            placeholder="Share your experience about this trip..."
+            value={ratingsData?.review}
+            onChange={(e) => setRatingsData({ ...ratingsData, review: e.target.value })}
+          />
           <button
-            onClick={() => {
-              navigate("/login");
-            }}
-            className="p-2 rounded text-white bg-green-700"
+            disabled={loading || (ratingsData.rating === 0 && ratingsData.review === "")}
+            type="button"
+            onClick={giveRating}
+            className="mt-4 w-full py-3 bg-[#EB662B] text-white font-bold rounded-lg disabled:opacity-50 hover:opacity-90 transition"
           >
-            Rate Package
+            {loading ? "Submitting..." : "Submit Review"}
+          </button>
+        </div>
+
+        {/* Reviews List */}
+        {packageRatings && packageRatings.length > 0 ? (
+          <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <RatingCard packageRatings={packageRatings} />
+            
+            {(packageData?.packageTotalRatings || 0) > 4 && (
+              <button
+                onClick={() => navigate(`/package/ratings/${params?.id}`)}
+                className="flex items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed border-gray-300 text-gray-600 hover:border-[#EB662B] hover:text-[#EB662B] transition font-bold text-lg"
+              >
+                View All Reviews <FaArrowRight />
+              </button>
+            )}
+          </div>
+        ) : (
+          <p className="text-gray-500">No reviews yet. Be the first to review this package!</p>
+        )}
+
+        {!currentUser && (
+          <button
+            onClick={() => navigate("/login")}
+            className="mt-6 px-8 py-3 rounded-lg text-white font-bold bg-[#6358DC] hover:opacity-90 transition"
+          >
+            Login to Rate Package
           </button>
         )}
       </div>
 
       {showMap && (
         <MapModal
-          location={packageData.packageDestination}
+          location={packageData?.packageDestination || "Bangladesh"}
           onClose={() => setShowMap(false)}
         />
       )}

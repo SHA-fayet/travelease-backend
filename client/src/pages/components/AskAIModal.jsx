@@ -1,25 +1,55 @@
 import React, { useState, useEffect } from "react";
 
-const AskAIModal = ({
-  isOpen,
-  onClose,
-  onAsk,
-  reply,
-  loading,
-  defaultPrompt,
-}) => {
+const AskAIModal = ({ isOpen, onClose, defaultPrompt }) => {
   const [prompt, setPrompt] = useState("");
+  const [reply, setReply] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // Auto-trigger if a default prompt is passed in
   useEffect(() => {
     if (defaultPrompt && isOpen) {
-      onAsk(defaultPrompt);
+      setPrompt(defaultPrompt);
+      handleAsk(defaultPrompt);
     }
   }, [defaultPrompt, isOpen]);
 
+  // Clear states when modal closes
   useEffect(() => {
-    if (reply) {
+    if (!isOpen) {
       setPrompt("");
+      setReply("");
+      setLoading(false);
     }
-  }, [reply]);
+  }, [isOpen]);
+
+  const handleAsk = async (textToAsk) => {
+    const query = typeof textToAsk === "string" ? textToAsk : prompt;
+    if (!query.trim()) return;
+
+    setLoading(true);
+    setReply("");
+
+    try {
+      const res = await fetch("/api/chatbot/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: query }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setReply(data.reply);
+        setPrompt(""); // Clear input box after getting answer
+      } else {
+        setReply(data.message || "An error occurred.");
+      }
+    } catch (error) {
+      console.error(error);
+      setReply("Network error. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -27,13 +57,13 @@ const AskAIModal = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 backdrop-blur-sm">
       <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl shadow-2xl w-[90%] max-w-lg relative animate-fade-in-up">
         <h2 className="text-2xl font-semibold mb-4 text-center text-zinc-800 dark:text-zinc-100">
-          I'am Trevo AI
+          I'm Travel BHAI
         </h2>
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Ask anything"
-          className="w-full h-32 p-3 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-white resize-none outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="Ask anything about travel, packages, or destinations..."
+          className="w-full h-32 p-3 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-white resize-none outline-none focus:ring-2 focus:ring-[#EB662B]"
         />
 
         <div className="mt-5 flex justify-end gap-3">
@@ -44,32 +74,34 @@ const AskAIModal = ({
             Close
           </button>
           <button
-            onClick={() => onAsk(prompt)}
+            onClick={handleAsk}
             disabled={loading || prompt.trim() === ""}
             className={`px-4 py-2 rounded-lg font-semibold transition ${
               loading
-                ? "bg-[#EB662B] text-white cursor-not-allowed"
-                : "bg-[#EB662B]  text-white"
+                ? "bg-[#d55923] text-white cursor-not-allowed opacity-70"
+                : "bg-[#EB662B] hover:bg-[#d55923] text-white shadow-md"
             }`}
           >
-            {loading ? "Searching..." : "Ask AI"}
+            {loading ? "Thinking..." : "Ask AI"}
           </button>
         </div>
 
-        <div className="mt-6 p-4 rounded-lg bg-zinc-100 dark:bg-zinc-800 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-blue-500 scrollbar-track-zinc-300 dark:scrollbar-track-zinc-700">
-          <p className="text-white font-bold text-3xl mb-4">Answer is here</p>
+        <div className="mt-6 p-4 rounded-lg bg-zinc-100 dark:bg-zinc-800 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-orange-500 scrollbar-track-zinc-300 dark:scrollbar-track-zinc-700">
+          <p className="text-zinc-800 dark:text-white font-bold text-xl mb-4 border-b border-zinc-300 dark:border-zinc-700 pb-2">
+            Answer is here
+          </p>
 
           {loading ? (
-            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 animate-pulse">
-              <span className="loading-spinner h-5 w-5 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-              Generating answer...
+            <div className="flex items-center gap-2 text-[#EB662B] animate-pulse font-medium">
+              <span className="loading-spinner h-5 w-5 border-4 border-[#EB662B] border-t-transparent rounded-full animate-spin" />
+              Travel bhai is typing...
             </div>
           ) : reply ? (
-            <p className="text-zinc-800 dark:text-zinc-100 whitespace-pre-line">
+            <div className="text-zinc-800 dark:text-zinc-100 whitespace-pre-line leading-relaxed text-sm">
               {reply}
-            </p>
+            </div>
           ) : (
-            <p className="text-zinc-400 italic">
+            <p className="text-zinc-400 italic text-sm">
               Your answer will appear here...
             </p>
           )}
