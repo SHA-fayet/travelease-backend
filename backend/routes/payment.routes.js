@@ -60,7 +60,7 @@ router.post("/create-payment", async (req, res) => {
             body: JSON.stringify({
                 mode: "0011",
                 payerReference: buyerId.toString(),
-                callbackURL: `http://localhost:8000/api/payment/bkash-callback?packageId=${packageId}&buyerId=${buyerId}&date=${date}&persons=${persons}&amount=${amount}`,
+                callbackURL: `https://travelease-backend-mwq0.onrender.com/api/payment/bkash-callback?packageId=${packageId}&buyerId=${buyerId}&date=${date}&persons=${persons}&amount=${amount}`,
                 amount: amount.toString(),
                 currency: "BDT",
                 intent: "sale",

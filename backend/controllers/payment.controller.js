@@ -62,7 +62,7 @@ export const paymentController = async (req, res) => {
       {
         mode: "0011",
         payerReference: "1",
-        callbackURL: "http://localhost:8000/api/payment/bkash/callback",
+        callbackURL: "https://travelease-backend-mwq0.onrender.com/api/payment/bkash/callback",
         amount: formattedAmount,
         currency: "BDT",
         intent: "sale",
