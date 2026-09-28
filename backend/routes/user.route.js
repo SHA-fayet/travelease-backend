@@ -10,6 +10,14 @@ import { isAdmin, requireSignIn } from "../middlewares/authMiddleware.js";
 import upload from "../middlewares/multer.js";
 const router = express.Router();
 
+// CRITICAL FIX: Maps Cloudinary URL to filename for Avatar updates
+const mapCloudinaryUrl = (req, res, next) => {
+  if (req.file) {
+    req.file.filename = req.file.path; // Replace filename with the live Cloudinary URL
+  }
+  next();
+};
+
 //user auth
 router.get("/user-auth", requireSignIn, (req, res) => {
   return res.status(200).send({ check: true });
@@ -21,7 +29,7 @@ router.get("/admin-auth", requireSignIn, isAdmin, (req, res) => {
 });
 
 //update user details
-router.post("/update/:id", requireSignIn, upload.single("avatar"), updateUser);
+router.post("/update/:id", requireSignIn, upload.single("avatar"), mapCloudinaryUrl, updateUser);
 
 //update user password
 router.post("/update-password/:id", requireSignIn, updateUserPassword);

@@ -32,12 +32,25 @@ const isAgencyOrAdmin = async (req, res, next) => {
   }
 };
 
+// CRITICAL FIX: Maps Cloudinary URLs to filename so controllers don't need changes
+const mapCloudinaryUrls = (req, res, next) => {
+  if (req.files) {
+    req.files.forEach((file) => {
+      // file.path contains the live Cloudinary URL. We map it to filename
+      // so your MongoDB database saves the full link automatically.
+      file.filename = file.path; 
+    });
+  }
+  next();
+};
+
 // Create package (Admin or Agency)
 router.post(
   "/create-package",
   requireSignIn,
   isAgencyOrAdmin,
   upload.array("packageImages", 10),
+  mapCloudinaryUrls,
   createPackage
 );
 
@@ -45,10 +58,12 @@ router.post(
 router.post(
   "/update-package/:id",
   requireSignIn,
-  isAgencyOrAdmin, // <-- CRITICAL: This must be isAgencyOrAdmin, NOT isAdmin
+  isAgencyOrAdmin,
   upload.array("packageImages", 10),
+  mapCloudinaryUrls,
   updatePackage
 );
+
 // Delete package by id (Admin or Agency)
 router.delete("/delete-package/:id", requireSignIn, isAgencyOrAdmin, deletePackage);
 
