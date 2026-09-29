@@ -1,10 +1,10 @@
 import Package from "../models/package.model.js";
 
-// 1. Create a new package (Enhanced to capture agency reference)
+// 1. Create a new package (captures agency reference)
 export const createPackage = async (req, res) => {
   try {
     let packageImages = [];
-    
+
     if (req.files && req.files.length > 0) {
       packageImages = req.files.map((file) => file.filename);
     }
@@ -37,16 +37,23 @@ export const updatePackage = async (req, res) => {
       return res.status(400).send({ success: false, message: "Invalid Package ID" });
     }
 
-    let updatedFields = { ...req.body };
+    const updatedFields = { ...req.body };
 
-    if (req.files && req.files.length > 0) {
-      updatedFields.packageImages = req.files.map((file) => file.filename);
+    // FIX: keep the images the admin kept (sent as text URLs in req.body.packageImages)
+    // and add any newly uploaded files, instead of overwriting everything.
+    const existingImages = [].concat(req.body.packageImages || []).filter(Boolean);
+    const newImages = (req.files || []).map((file) => file.filename);
+    const finalImages = [...existingImages, ...newImages];
+
+    delete updatedFields.packageImages;
+    if (finalImages.length > 0) {
+      updatedFields.packageImages = finalImages;
     }
 
     const updatedPackage = await Package.findByIdAndUpdate(
       req.params.id,
       { $set: updatedFields },
-      { new: true }
+      { new: true, runValidators: true }
     );
 
     if (!updatedPackage) {
@@ -72,7 +79,7 @@ export const deletePackage = async (req, res) => {
     }
 
     const deletedPackage = await Package.findByIdAndDelete(req.params.id);
-    
+
     if (!deletedPackage) {
       return res.status(404).send({ success: false, message: "Package not found!" });
     }
@@ -84,26 +91,40 @@ export const deletePackage = async (req, res) => {
   }
 };
 
-// 4. Get all packages (Supports filtering by agencyId if requested)
+// 4. Get all packages
+// Supports: searchTerm, agencyId, offer=true, sort=createdAt|packageRating, limit, startIndex
 export const getPackages = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 0;
+    const startIndex = parseInt(req.query.startIndex) || 0;
     const searchTerm = req.query.searchTerm || "";
     const agencyIdFilter = req.query.agencyId;
 
-    let query = {
+    // escape regex special characters so searches like "cox (bazar" don't crash
+    const safeTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    const query = {
       $or: [
-        { packageName: { $regex: searchTerm, $options: "i" } },
-        { packageDestination: { $regex: searchTerm, $options: "i" } }
-      ]
+        { packageName: { $regex: safeTerm, $options: "i" } },
+        { packageDestination: { $regex: safeTerm, $options: "i" } },
+      ],
     };
 
     if (agencyIdFilter) {
       query.agencyId = agencyIdFilter;
     }
 
+    if (req.query.offer === "true") {
+      query.packageOffer = true;
+    }
+
+    // whitelist sort fields; default is newest first
+    const allowedSorts = ["createdAt", "packageRating"];
+    const sortField = allowedSorts.includes(req.query.sort) ? req.query.sort : "createdAt";
+
     const packages = await Package.find(query)
-      .sort({ createdAt: -1 })
+      .sort({ [sortField]: -1 })
+      .skip(startIndex)
       .limit(limit);
 
     res.status(200).send({
