@@ -5,6 +5,11 @@ const router = express.Router();
 
 const cleanEnv = (val) => val?.replace(/"/g, '')?.trim();
 
+// FIX: Automatically use your Vercel URL instead of localhost
+const getFrontendUrl = () => {
+    return cleanEnv(process.env.CLIENT_URL) || "https://travelease-frontend-puce.vercel.app";
+};
+
 const authenticateBkash = async () => {
     try {
         const response = await fetch(`${cleanEnv(process.env.BKASH_BASE_URL)}/tokenized/checkout/token/grant`, {
@@ -28,8 +33,7 @@ const authenticateBkash = async () => {
         try {
             data = JSON.parse(responseText);
         } catch (e) {
-            console.error("bKash Raw Error (WAF Block):", responseText);
-            throw new Error(`bKash Firewall blocked the request. Raw response: ${responseText.substring(0, 50)}`);
+            throw new Error(`bKash Firewall blocked the request.`);
         }
         
         if (!response.ok || !data.id_token) {
@@ -37,7 +41,6 @@ const authenticateBkash = async () => {
         }
         return data.id_token;
     } catch (error) {
-        console.error("bKash Auth Error:", error.message);
         throw new Error("bKash Authentication Failed");
     }
 };
@@ -45,7 +48,6 @@ const authenticateBkash = async () => {
 router.post("/create-payment", async (req, res) => {
     try {
         const { amount, packageId, buyerId, date, persons } = req.body;
-        
         const token = await authenticateBkash();
 
         const response = await fetch(`${cleanEnv(process.env.BKASH_BASE_URL)}/tokenized/checkout/create`, {
@@ -55,7 +57,7 @@ router.post("/create-payment", async (req, res) => {
                 "Accept": "application/json",
                 "Authorization": token,
                 "X-APP-Key": cleanEnv(process.env.BKASH_APP_KEY),
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                "User-Agent": "Mozilla/5.0"
             },
             body: JSON.stringify({
                 mode: "0011",
@@ -70,30 +72,25 @@ router.post("/create-payment", async (req, res) => {
 
         const responseText = await response.text();
         let data;
-        try {
-            data = JSON.parse(responseText);
-        } catch (e) {
-            throw new Error("Invalid JSON in create response");
-        }
+        try { data = JSON.parse(responseText); } catch (e) { throw new Error("Invalid JSON"); }
 
         if (data && data.bkashURL) {
             return res.status(200).json({ success: true, bkashURL: data.bkashURL });
         } else {
-            return res.status(400).json({ success: false, message: data.statusMessage || "Failed to connect to bKash gateway" });
+            return res.status(400).json({ success: false, message: data.statusMessage || "Failed to connect to bKash" });
         }
     } catch (error) {
-        console.error("bKash Gateway Error:", error);
         res.status(500).json({ success: false, message: "Payment connection failed." });
     }
 });
 
 router.get("/bkash-callback", async (req, res) => {
     const { paymentID, status, packageId, buyerId, date, persons, amount } = req.query;
+    const frontendUrl = getFrontendUrl(); // FIX: Dynamically gets your Vercel URL
     
     if (status === "success" || status === "0000") {
         try {
             const token = await authenticateBkash();
-            
             const response = await fetch(`${cleanEnv(process.env.BKASH_BASE_URL)}/tokenized/checkout/execute`, {
                 method: "POST",
                 headers: {
@@ -110,8 +107,8 @@ router.get("/bkash-callback", async (req, res) => {
 
             if (data && (data.statusCode === "0000" || data.transactionStatus === "Completed")) {
                 const newBooking = new Booking({
-                    packageId,
-                    userId: buyerId, // PERFECT FIX: Fulfills strict Mongoose Schema requirement
+                    packageId: packageId && packageId !== 'undefined' ? packageId : null,
+                    userId: buyerId, 
                     user: buyerId,
                     buyerId,
                     travelDate: date,
@@ -125,33 +122,35 @@ router.get("/bkash-callback", async (req, res) => {
                 });
                 await newBooking.save();
                 
-                return res.redirect("http://localhost:5173/profile/user");
+                // FIX: Redirects to Vercel, not localhost
+                return res.redirect(`${frontendUrl}/profile/user`);
             } else {
-                return res.redirect(`http://localhost:5173/booking/${packageId}?error=ExecuteFailed`);
+                return res.redirect(`${frontendUrl}/booking/${packageId}?error=ExecuteFailed`);
             }
         } catch (error) {
-            console.error("bKash Execute Error:", error);
-            return res.redirect(`http://localhost:5173/booking/${packageId}?error=ExecutionError`);
+            return res.redirect(`${frontendUrl}/booking/${packageId}?error=ExecutionError`);
         }
     } else {
-        return res.redirect(`http://localhost:5173/booking/${packageId}?error=${status}`);
+        return res.redirect(`${frontendUrl}/booking/${packageId}?error=${status}`);
     }
 });
 
-// 4. MOCK CREDIT/DEBIT CARD PAYMENT (FOR DEFENSE DEMO)
-router.post("/dummy-card-payment", async (req, res) => {
+// FIX: This stops the 500 Error by perfectly satisfying your Mongoose Schema
+router.post("/card", async (req, res) => {
     try {
-        const { amount, packageId, buyerId, date, persons, cardNumber } = req.body;
+        const { amount, packageId, serviceId, buyerId, date, persons, cardInfo } = req.body;
         
-        if (!cardNumber || cardNumber.replace(/\s/g, '').length < 15) {
+        // Ensure card number is at least 15 digits
+        if (!cardInfo || !cardInfo.number || cardInfo.number.replace(/\s/g, '').length < 15) {
             return res.status(400).json({ success: false, message: "Please enter a valid 16-digit card number." });
         }
 
         const newBooking = new Booking({
-            packageId,
-            userId: buyerId, // PERFECT FIX: Fulfills strict Mongoose Schema requirement
-            user: buyerId,
-            buyerId,
+            packageId: packageId && packageId !== 'undefined' ? packageId : null,
+            serviceId: serviceId && serviceId !== 'undefined' ? serviceId : null,
+            userId: buyerId,   // REQUIRED BY SCHEMA
+            user: buyerId,     // REQUIRED BY SCHEMA
+            buyerId,           // REQUIRED BY SCHEMA
             travelDate: date,
             date,
             persons,
@@ -166,34 +165,9 @@ router.post("/dummy-card-payment", async (req, res) => {
 
         return res.status(200).json({ success: true, message: "Card payment processed successfully!" });
     } catch (error) {
-        console.error("Dummy Card Error:", error);
-        res.status(500).json({ success: false, message: "Card payment failed." });
+        console.error("Card Payment Database Error:", error);
+        res.status(500).json({ success: false, message: "Card payment failed on the server." });
     }
-});
-
-// Add this route to your backend to stop the 404 Error!
-router.post("/card", async (req, res) => {
-  try {
-    const { amount, packageId, serviceId, buyerId, date, persons, cardInfo } = req.body;
-    
-    // Create the booking in your database
-    const newBooking = new Booking({
-      buyerId,
-      packageId: packageId || null,
-      serviceId: serviceId || null,
-      date,
-      persons,
-      totalPrice: amount,
-      status: "Confirmed",
-      paymentMethod: "Credit Card"
-    });
-
-    await newBooking.save();
-
-    res.status(200).json({ success: true, message: "Payment processed successfully!" });
-  } catch (error) {
-    res.status(500).json({ success: false, message: "Server error" });
-  }
 });
 
 export default router;
