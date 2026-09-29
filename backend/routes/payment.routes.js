@@ -171,4 +171,29 @@ router.post("/dummy-card-payment", async (req, res) => {
     }
 });
 
+// Add this route to your backend to stop the 404 Error!
+router.post("/card", async (req, res) => {
+  try {
+    const { amount, packageId, serviceId, buyerId, date, persons, cardInfo } = req.body;
+    
+    // Create the booking in your database
+    const newBooking = new Booking({
+      buyerId,
+      packageId: packageId || null,
+      serviceId: serviceId || null,
+      date,
+      persons,
+      totalPrice: amount,
+      status: "Confirmed",
+      paymentMethod: "Credit Card"
+    });
+
+    await newBooking.save();
+
+    res.status(200).json({ success: true, message: "Payment processed successfully!" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
 export default router;

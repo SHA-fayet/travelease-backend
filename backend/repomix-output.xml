@@ -1,0 +1,2305 @@
+This file is a merged representation of a subset of the codebase, containing specifically included files, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: controllers/**, routes/**, models/**
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+controllers/
+  admin.controller.js
+  ai.controller.js
+  auth.controller.js
+  booking.controller.js
+  chatbot.controller.js
+  community.controller.js
+  package.controller.js
+  payment.controller.js
+  rating.controller.js
+  service.controller.js
+  user.controller.js
+models/
+  booking.model.js
+  comment.model.js
+  guide.model.js
+  hotel.model.js
+  package.model.js
+  post.model.js
+  ratings_reviews.model.js
+  transportation.model.js
+  user.model.js
+routes/
+  admin.route.js
+  ai.route.js
+  auth.route.js
+  booking.route.js
+  chatbot.route.js
+  community.route.js
+  package.route.js
+  payment.routes.js
+  rating.route.js
+  service.route.js
+  user.route.js
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="controllers/admin.controller.js">
+import User from "../models/user.model.js";
+import Package from "../models/package.model.js";
+
+// Get all users for admin oversight
+export const getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find({}).select("-password");
+    res.status(200).send({
+      success: true,
+      count: users.length,
+      users,
+    });
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    res.status(500).send({ success: false, message: "Failed to fetch users" });
+  }
+};
+
+// Update user role (e.g., make someone an agency or admin)
+export const updateUserRole = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { user_role } = req.body; // 0, 1, or 2
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { user_role },
+      { new: true }
+    ).select("-password");
+
+    if (!updatedUser) {
+      return res.status(404).send({ success: false, message: "User not found" });
+    }
+
+    res.status(200).send({
+      success: true,
+      message: "User role updated successfully",
+      updatedUser,
+    });
+  } catch (error) {
+    console.error("Error updating role:", error);
+    res.status(500).send({ success: false, message: "Failed to update user role" });
+  }
+};
+
+// Get admin stats (total users, total packages, etc.)
+export const getAdminStats = async (req, res) => {
+  try {
+    const totalUsers = await User.countDocuments();
+    const totalPackages = await Package.countDocuments();
+    const agenciesCount = await User.countDocuments({ user_role: 2 });
+
+    res.status(200).send({
+      success: true,
+      stats: {
+        totalUsers,
+        totalPackages,
+        agenciesCount,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching stats:", error);
+    res.status(500).send({ success: false, message: "Failed to fetch dashboard statistics" });
+  }
+};
+</file>
+
+<file path="controllers/ai.controller.js">
+import fs from "fs";
+import FormData from "form-data";
+import fetch from "node-fetch";
+import Package from "../models/package.model.js";
+import Hotel from "../models/hotel.model.js";
+import Guide from "../models/guide.model.js";
+
+export const analyzeDestinationImage = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).send({ success: false, message: "No image provided" });
+    }
+
+    const formData = new FormData();
+    formData.append("file", fs.createReadStream(req.file.path));
+
+    const aiResponse = await fetch("http://127.0.0.1:7860/predict", {
+      method: "POST",
+      body: formData,
+      headers: formData.getHeaders()
+    });
+
+    if (!aiResponse.ok) {
+      throw new Error("Failed to communicate with AI microservice");
+    }
+
+    const aiData = await aiResponse.json();
+    
+    // 1. Extract the raw prediction
+    let rawLocation = aiData.predicted_class || aiData.prediction || "Cox's Bazar"; 
+    
+    // 2. CLEAN THE STRING: Replace underscores with spaces (e.g., "Sajek_Valley" -> "Sajek Valley")
+    let cleanLocation = rawLocation.replace(/_/g, " ");
+
+    // 3. (Optional) Handle specific edge cases where the folder name differs from human spelling
+    if (cleanLocation === "Coxsbazar Sea Beach") cleanLocation = "Cox's Bazar";
+    if (cleanLocation === "Chondronath Pahar Shitakundo") cleanLocation = "Sitakunda";
+
+    fs.unlinkSync(req.file.path);
+
+    // 4. Search MongoDB using the cleaned string
+    const regex = new RegExp(cleanLocation, "i");
+
+    const [packages, hotels, guides] = await Promise.all([
+      Package.find({ packageDestination: regex }).limit(4),
+      Hotel.find({ location: regex }).limit(4),
+      Guide.find({ location: regex }).limit(4)
+    ]);
+
+    res.status(200).send({
+      success: true,
+      location: cleanLocation, // Sends "Sajek Valley" instead of "Sajek_Valley"
+      confidence: aiData.confidence || 0.95,
+      data: {
+        packages,
+        hotels,
+        guides
+      }
+    });
+
+  } catch (error) {
+    console.error("AI Analysis Error:", error);
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    res.status(500).send({ success: false, message: "AI Analysis failed" });
+  }
+};
+</file>
+
+<file path="controllers/auth.controller.js">
+import User from "../models/user.model.js";
+import bcryptjs from "bcryptjs";
+import jwt from "jsonwebtoken";
+
+// Test controller
+export const test = (req, res) => {
+  return res.send("Hello From Test!");
+};
+
+// Signup controller
+export const signupController = async (req, res) => {
+  try {
+    const { username, email, password, address, phone, user_role, agencyName, businessLicense } = req.body;
+
+    if (!username || !email || !password || !address || !phone) {
+      return res.status(400).send({
+        success: false,
+        message: "All fields are required!",
+      });
+    }
+
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(409).send({
+        success: false,
+        message: "User already exists please login",
+      });
+    }
+
+    const hashedPassword = bcryptjs.hashSync(password, 10);
+    const newUser = new User({
+      username,
+      email,
+      password: hashedPassword,
+      address,
+      phone,
+      user_role: user_role || 0,
+      agencyName: agencyName || "",
+      businessLicense: businessLicense || "",
+      isVerifiedAgency: user_role === 2 ? true : false,
+    });
+
+    await newUser.save();
+
+    return res.status(201).send({
+      message: "User Created Successfully",
+      success: true,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).send({
+      success: false,
+      message: "Error in server!",
+    });
+  }
+};
+
+// Login controller
+export const loginController = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).send({
+        success: false,
+        message: "All fields are required!",
+      });
+    }
+
+    const validUser = await User.findOne({ email });
+    if (!validUser) {
+      return res.status(404).send({
+        success: false,
+        message: "User not found!",
+      });
+    }
+
+    const validPassword = bcryptjs.compareSync(password, validUser.password);
+    if (!validPassword) {
+      return res.status(401).send({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
+
+    const token = jwt.sign({ id: validUser._id }, process.env.JWT_SECRET, {
+      expiresIn: "4d",
+    });
+    
+    const { password: pass, ...rest } = validUser._doc;
+    
+    res
+      .cookie("X_TTMS_access_token", token, {
+        httpOnly: true,
+        maxAge: 4 * 24 * 60 * 60 * 1000,
+      })
+      .status(200)
+      .send({
+        success: true,
+        message: "Login Success",
+        user: rest,
+      });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).send({
+      success: false,
+      message: "Error during login",
+    });
+  }
+};
+
+// Logout controller
+export const logOutController = (req, res) => {
+  try {
+    res.clearCookie("X_TTMS_access_token");
+    res.status(200).send({
+      success: true,
+      message: "Logged out successfully",
+    });
+  } catch (error) {
+    console.log(error);
+  }
+};
+</file>
+
+<file path="controllers/booking.controller.js">
+import Booking from "../models/booking.model.js";
+import Package from "../models/package.model.js";
+import Hotel from "../models/hotel.model.js";
+import Transportation from "../models/transportation.model.js";
+import Guide from "../models/guide.model.js";
+import User from "../models/user.model.js"; 
+import mongoose from "mongoose";
+
+// 1. Book Package
+export const bookPackage = async (req, res) => {
+  try {
+    const packageRef = req.params.packageId || req.body.packageDetails || req.body.packageId;
+    const bookingDate = req.body.date || req.body.travelDate;
+    const totalPersons = Number(req.body.persons || req.body.travelersCount || 1);
+    const buyerId = req.user?.id || req.user?._id;
+
+    if (!packageRef || !buyerId || !bookingDate || !totalPersons) {
+      return res.status(400).send({ success: false, message: "All fields are required!" });
+    }
+
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const existingRecentBooking = await Booking.findOne({
+      $or: [{ buyer: buyerId }, { userId: buyerId }],$or: [{ packageDetails: packageRef }, { packageId: packageRef }],
+      createdAt: { $gt: fiveMinutesAgo }
+    });
+
+    if (existingRecentBooking) {
+      return res.status(429).send({
+        success: false,
+        message: "You already initiated a booking for this tour. Wait 5 minutes before trying again.",
+      });
+    }
+
+    const validPackage = await Package.findById(packageRef);
+    if (!validPackage) return res.status(404).send({ success: false, message: "Package Not Found!" });
+
+    const unitPrice = validPackage.packageOffer && validPackage.packageDiscountPrice > 0
+        ? validPackage.packageDiscountPrice
+        : validPackage.packagePrice;
+
+    const calculatedTotalPrice = unitPrice * totalPersons;
+
+    const newBooking = await Booking.create({
+      packageId: packageRef,
+      packageDetails: packageRef,
+      userId: buyerId,
+      buyer: buyerId,
+      travelDate: bookingDate,
+      date: bookingDate,
+      travelersCount: totalPersons,
+      persons: totalPersons,
+      totalPrice: calculatedTotalPrice,
+      status: "Booked",
+      bookingStatus: "Confirmed",
+      paymentStatus: "Paid"
+    });
+
+    if (newBooking) {
+      return res.status(201).send({ success: true, message: "Package Booked Successfully!", booking: newBooking });
+    } else {
+      return res.status(500).send({ success: false, message: "Booking failed!" });
+    }
+  } catch (error) {
+    console.error(error);
+    return res.status(500).send({ success: false, message: "Server error during booking." });
+  }
+};
+
+// 2. Book Standalone Service (Hotel, Transport, Guide)
+export const bookService = async (req, res) => {
+  try {
+    const { serviceId, itemType, serviceName, totalPrice, travelDate, persons } = req.body;
+    const buyerId = req.user?.id || req.user?._id;
+
+    if (!serviceId || !itemType || !buyerId || !travelDate) {
+      return res.status(400).send({ success: false, message: "Missing required booking fields" });
+    }
+
+    const newBooking = await Booking.create({
+      userId: buyerId,
+      buyer: buyerId,
+      itemType,
+      serviceId,
+      serviceName,
+      travelDate,
+      date: travelDate,
+      travelersCount: persons || 1,
+      persons: persons || 1,
+      totalPrice,
+      status: "Booked",
+      bookingStatus: "Confirmed",
+      paymentStatus: "Paid"
+    });
+
+    res.status(201).send({ success: true, message: `${itemType} booked successfully!`, booking: newBooking });
+  } catch (error) {
+    console.error("Service Booking Error:", error);
+    res.status(500).send({ success: false, message: "Server error during booking" });
+  }
+};
+
+// 3. Get current bookings for admin
+export const getCurrentBookings = async (req, res) => {
+  try {
+    const searchTerm = req?.query?.searchTerm || "";
+    const bookings = await Booking.find({
+      $or: [{ date: {$gt: new Date().toISOString() } }, { travelDate: { $gt: new Date().toISOString() } }],$or: [{ status: "Booked" }, { bookingStatus: "Confirmed" }]
+    })
+      .populate({ path: "packageDetails", strictPopulate: false })
+      .populate({ path: "packageId", strictPopulate: false })
+      .populate({ path: "serviceId", strictPopulate: false }) // CRITICAL FIX
+      .populate({ path: "buyer", strictPopulate: false, match: { $or: [{ username: { $regex: searchTerm,$options: "i" } }, { email: { $regex: searchTerm,$options: "i" } }] } })
+      .sort({ createdAt: "asc" });
+
+    let bookingsFiltered = bookings.filter((booking) => booking.buyer || booking.userId);
+    return res.status(200).send(bookingsFiltered.length ? { success: true, bookings: bookingsFiltered } : { success: false, message: "No Bookings Available" });
+  } catch (error) {
+    res.status(500).send({ success: false });
+  }
+};
+
+// 4. Get all bookings admin
+export const getAllBookings = async (req, res) => {
+  try {
+    const searchTerm = req?.query?.searchTerm || "";
+    const bookings = await Booking.find({})
+      .populate({ path: "packageDetails", strictPopulate: false })
+      .populate({ path: "packageId", strictPopulate: false })
+      .populate({ path: "serviceId", strictPopulate: false }) // CRITICAL FIX
+      .populate({ 
+        path: "buyer", 
+        strictPopulate: false, 
+        match: { $or: [{ username: { $regex: searchTerm,$options: "i" } }, { email: { $regex: searchTerm,$options: "i" } }] } 
+      })
+      .populate({ path: "userId", strictPopulate: false }) 
+      .populate({ path: "user", strictPopulate: false })
+      .sort({ createdAt: "asc" });
+
+    let bookingsFiltered = bookings.filter((booking) => booking.buyer || booking.userId || booking.user);
+    
+    return res.status(200).send(
+      bookingsFiltered.length ? { success: true, bookings: bookingsFiltered } : { success: false, message: "No Bookings Available" }
+    );
+  } catch (error) {
+    console.error("Fetch All Bookings Error:", error);
+    res.status(500).send({ success: false });
+  }
+};
+
+// 5. Get current bookings for user by id
+export const getUserCurrentBookings = async (req, res) => {
+  try {
+    const authId = req.user?.id || req.user?._id;
+    if (String(authId) !== String(req?.params?.id)) return res.status(401).send({ success: false, message: "Unauthorized request" });
+    
+    const searchTerm = req?.query?.searchTerm || "";
+    const bookings = await Booking.find({
+      $or: [{ buyer: new mongoose.Types.ObjectId(req.params.id) }, { userId: new mongoose.Types.ObjectId(req.params.id) }],
+      $or: [{ date: {$gt: new Date().toISOString() } }, { travelDate: { $gt: new Date().toISOString() } }],$or: [{ status: "Booked" }, { bookingStatus: "Confirmed" }, { status: "Pending Payment" }, { status: "Cancellation Requested" }]
+    })
+      .populate({ path: "packageDetails", strictPopulate: false, match: { packageName: { $regex: searchTerm,$options: "i" } } })
+      .populate({ path: "packageId", strictPopulate: false, match: { packageName: { $regex: searchTerm,$options: "i" } } })
+      .populate({ path: "serviceId", strictPopulate: false }) // CRITICAL FIX
+      .sort({ createdAt: "asc" });
+
+    let bookingsFiltered = bookings.filter((booking) => booking.packageDetails || booking.packageId || booking.serviceId);
+    return res.status(200).send(bookingsFiltered.length ? { success: true, bookings: bookingsFiltered } : { success: false, message: "No Bookings Available" });
+  } catch (error) {
+    res.status(500).send({ success: false });
+  }
+};
+
+// 6. Get all bookings by user id
+export const getAllUserBookings = async (req, res) => {
+  try {
+    const authId = req.user?.id || req.user?._id;
+    if (String(authId) !== String(req?.params?.id)) return res.status(401).send({ success: false, message: "Unauthorized request" });
+    
+    const searchTerm = req?.query?.searchTerm || "";
+    const bookings = await Booking.find({
+      $or: [{ buyer: new mongoose.Types.ObjectId(req.params.id) }, { userId: new mongoose.Types.ObjectId(req.params.id) }]
+    })
+      .populate({ path: "packageDetails", strictPopulate: false, match: { packageName: { $regex: searchTerm,$options: "i" } } })
+      .populate({ path: "packageId", strictPopulate: false, match: { packageName: { $regex: searchTerm,$options: "i" } } })
+      .populate({ path: "serviceId", strictPopulate: false }) // CRITICAL FIX
+      .sort({ createdAt: "asc" });
+
+    let bookingsFiltered = bookings.filter((booking) => booking.packageDetails || booking.packageId || booking.serviceId);
+    return res.status(200).send(bookingsFiltered.length ? { success: true, bookings: bookingsFiltered } : { success: false, message: "No Bookings Available" });
+  } catch (error) {
+    res.status(500).send({ success: false });
+  }
+};
+
+// 7. Delete booking history
+export const deleteBookingHistory = async (req, res) => {
+  try {
+    const authId = req.user?.id || req.user?._id;
+    const requestingUser = await User.findById(authId);
+    const isAdmin = requestingUser && requestingUser.user_role === 1;
+
+    if (!isAdmin && String(authId) !== String(req?.params?.userId)) {
+      return res.status(401).send({ success: false, message: "Unauthorized request" });
+    }
+    
+    const deleteHistory = await Booking.findByIdAndDelete(req?.params?.id);
+    return res.status(200).send(deleteHistory ? { success: true, message: "History Deleted!" } : { success: false, message: "Failed to delete" });
+  } catch (error) {
+    res.status(500).send({ success: false });
+  }
+};
+
+// 8. Cancel Booking 
+export const cancelBooking = async (req, res) => {
+  try {
+    const authId = req.user?.id || req.user?._id;
+    const { reason } = req.body;
+    
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).send({ success: false, message: "Booking not found" });
+
+    const requestingUser = await User.findById(authId);
+    const isAdmin = requestingUser && requestingUser.user_role === 1;
+
+    if (isAdmin) {
+      await Booking.findByIdAndUpdate(req.params.id, { 
+        status: "Cancelled", 
+        bookingStatus: "Cancelled",
+        cancellationReason: reason || "Cancelled directly by Administrator"
+      }, { strict: false }); 
+      return res.status(200).send({ success: true, message: "Trip permanently cancelled by Admin." });
+    }
+
+    if (String(authId) !== String(req.params.userId)) {
+      return res.status(401).send({ success: false, message: "Unauthorized request. You do not own this booking." });
+    }
+
+    if (!reason || reason.trim() === "") {
+      return res.status(400).send({ success: false, message: "A cancellation reason is required." });
+    }
+
+    await Booking.findByIdAndUpdate(req.params.id, { 
+      status: "Cancellation Requested", 
+      cancellationReason: reason 
+    }, { strict: false });
+
+    return res.status(200).send({ success: true, message: "Cancellation request sent successfully." });
+    
+  } catch (error) {
+    console.error("Cancel Booking Backend Error:", error);
+    res.status(500).send({ success: false, message: "Server error during cancellation." });
+  }
+};
+
+// 9. Get bookings exclusively for a specific agency's packages AND standalone services
+export const getAgencyBookings = async (req, res) => {
+  try {
+    const agencyId = req.user?.id || req.user?._id;
+
+    // 1. Get Packages
+    const agencyPackages = await Package.find({ $or: [{ agencyId }, { userRef: agencyId }] }).select("_id");
+    const packageIds = agencyPackages.map((pkg) => pkg._id);
+
+    // 2. Get Standalone Services
+    const agencyHotels = await Hotel.find({ agencyId }).select("_id");
+    const agencyTransports = await Transportation.find({ agencyId }).select("_id");
+    const agencyGuides = await Guide.find({ agencyId }).select("_id");
+    
+    const serviceIds = [
+      ...agencyHotels.map(h => h._id),
+      ...agencyTransports.map(t => t._id),
+      ...agencyGuides.map(g => g._id)
+    ];
+
+    // 3. Find bookings matching either packageIds OR serviceIds
+    const bookings = await Booking.find({
+      $or: [
+        { packageId: { $in: packageIds } },
+        { packageDetails: { $in: packageIds } },
+        { serviceId: { $in: serviceIds } }
+      ]
+    }).sort({ createdAt: -1 });
+
+    res.status(200).send({
+      success: true,
+      bookings,
+    });
+  } catch (error) {
+    console.error("Agency Booking Fetch Error:", error);
+    res.status(500).send({ success: false, message: "Server error fetching agency bookings" });
+  }
+};
+</file>
+
+<file path="controllers/chatbot.controller.js">
+import Package from "../models/package.model.js";
+
+export const askAI = async (req, res) => {
+  try {
+    const { prompt } = req.body;
+    
+    if (!prompt) return res.status(400).json({ success: false, message: "Prompt is required" });
+
+    // Fetch live database packages for context
+    const availablePackages = await Package.find({})
+      .select("packageName destination packagePrice packageDiscountPrice packageDays packageNights packageDescription");
+
+    let liveDatabaseContext = "Here are the live, bookable travel packages currently available in the database:\n";
+    if (availablePackages.length > 0) {
+      availablePackages.forEach(pkg => {
+        const activePrice = (pkg.packageDiscountPrice > 0) ? pkg.packageDiscountPrice : pkg.packagePrice;
+        liveDatabaseContext += `- Name: "${pkg.packageName || 'Unknown'}", Destination: ${pkg.destination || 'Various'}, Duration: ${pkg.packageDays || 1}D/${pkg.packageNights || 0}N, Price: ৳${activePrice || 0} BDT, Description: ${pkg.packageDescription || "N/A"}\n`;
+      });
+    } else {
+      liveDatabaseContext += "- No packages are currently available.\n";
+    }
+
+    const systemPrompt = `
+      You are Travel Bhai, the official intelligent travel assistant and smart recommendation engine for TravelEase.
+      Recommend suitable packages from the live database below based on the user's request. Keep it friendly, concise, and structured.
+      
+      LIVE DATABASE:
+      ${liveDatabaseContext}
+      
+      User's Request: ${prompt}
+    `;
+
+    let replyText = null;
+
+    // ==========================================
+    // TIER 1: TRY GOOGLE GEMINI API FIRST
+    // ==========================================
+    const geminiApiKey = process.env.GEMINI_API_KEY?.trim();
+    if (geminiApiKey) {
+      try {
+        const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${geminiApiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: systemPrompt }] }]
+          })
+        });
+
+        const geminiData = await geminiRes.json();
+        if (geminiRes.ok && geminiData.candidates?.[0]?.content?.parts?.[0]?.text) {
+          replyText = geminiData.candidates[0].content.parts[0].text;
+          console.log("✅ Travel Bhai responded successfully via Gemini AI.");
+        } else {
+          console.warn("⚠️ Gemini API rate limit or error hit. Failing over to Tier 2 (Groq AI)...");
+        }
+      } catch (geminiErr) {
+        console.warn("⚠️ Gemini network failure. Failing over to Tier 2 (Groq AI)...");
+      }
+    }
+
+    // ==========================================
+    // TIER 2: FAILOVER TO GROQ API (MULTI-MODEL ATTEMPTS)
+    // ==========================================
+    const groqKey = process.env.GROQ_API_KEY?.trim();
+    if (!replyText && groqKey) {
+      const groqModels = ["llama-3.1-8b-instant", "gemma2-9b-it", "openai/gpt-oss-120b"];
+
+      for (const modelName of groqModels) {
+        try {
+          const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${groqKey}`
+            },
+            body: JSON.stringify({
+              model: modelName,
+              messages: [
+                { role: "system", content: "You are Travel Bhai, an AI travel recommendation engine for TravelEase." },
+                { role: "user", content: systemPrompt }
+              ]
+            })
+          });
+
+          const groqData = await groqRes.json();
+          if (groqRes.ok && groqData.choices?.[0]?.message?.content) {
+            replyText = groqData.choices[0].message.content;
+            console.log(`✅ Travel Bhai responded successfully via Groq AI using model: ${modelName}`);
+            break; // Exit loop on first successful model
+          } else {
+            console.warn(`⚠️ Groq model '${modelName}' rejected or unavailable, trying next...`);
+          }
+        } catch (groqModelErr) {
+          console.warn(`⚠️ Groq model '${modelName}' network exception.`);
+        }
+      }
+    }
+
+    // ==========================================
+    // TIER 3: SMART LOCAL DATABASE RECOMMENDATION ENGINE
+    // ==========================================
+    if (!replyText) {
+      console.log("🔄 All external AI APIs unavailable. Engaging Smart Local Engine fallback.");
+      const queryLower = prompt.toLowerCase();
+      
+      const matchedPackages = availablePackages.filter(pkg => {
+        const name = (pkg.packageName || "").toLowerCase();
+        const dest = (pkg.destination || "").toLowerCase();
+        const desc = (pkg.packageDescription || "").toLowerCase();
+        return name.includes(queryLower) || dest.includes(queryLower) || desc.includes(queryLower);
+      });
+
+      replyText = "🤖 *(AI traffic high / fallback active)*:\n\n";
+      if (matchedPackages.length > 0) {
+        replyText += "Here are the best matching trips from our live database:\n";
+        matchedPackages.forEach(pkg => {
+          const price = pkg.packageDiscountPrice > 0 ? pkg.packageDiscountPrice : pkg.packagePrice;
+          replyText += `• **${pkg.packageName || "Package"}** (${pkg.destination || "Destination"}) - ${pkg.packageDays || 1}D/${pkg.packageNights || 0}N for ৳${price || 0} BDT\n`;
+        });
+      } else {
+        replyText += "We have several amazing packages available on our search page! Here are our top recommendations:\n";
+        availablePackages.slice(0, 3).forEach(pkg => {
+          const price = pkg.packageDiscountPrice > 0 ? pkg.packageDiscountPrice : pkg.packagePrice;
+          replyText += `• **${pkg.packageName || "Package"}** (${pkg.destination || "Destination"}) - ৳${price || 0} BDT\n`;
+        });
+      }
+    }
+
+    return res.status(200).json({ success: true, reply: replyText });
+
+  } catch (error) {
+    console.error("Travel Bhai Critical Server Error:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "I am having trouble connecting right now. Please try again later." 
+    });
+  }
+};
+</file>
+
+<file path="controllers/community.controller.js">
+import Post from "../models/post.model.js";
+import Comment from "../models/comment.model.js";
+
+// Fetch all posts with their authors and comment counts
+export const getPosts = async (req, res) => {
+  try {
+    const { type, destination } = req.query;
+    let query = {};
+    if (type) query.type = type;
+    if (destination) query.destination = { $regex: destination, $options: "i" };
+
+    const posts = await Post.find(query)
+      .populate("author", "username avatar lookingForPartner")
+      .sort({ createdAt: -1 });
+
+    const postsWithCounts = await Promise.all(posts.map(async (post) => {
+      const commentCount = await Comment.countDocuments({ post: post._id });
+      return { ...post.toObject(), commentCount };
+    }));
+
+    res.status(200).send({ success: true, posts: postsWithCounts });
+  } catch (error) {
+    res.status(500).send({ success: false, message: "Error fetching posts" });
+  }
+};
+
+// Create a new post
+export const createPost = async (req, res) => {
+  try {
+    const authorId = req.user?.id || req.user?._id;
+    const { type, title, content, destination } = req.body;
+    let image = req.file ? req.file.filename : "";
+
+    const newPost = await Post.create({ author: authorId, type, title, content, destination, image });
+    res.status(201).send({ success: true, post: newPost });
+  } catch (error) {
+    res.status(500).send({ success: false, message: "Error creating post" });
+  }
+};
+
+// Toggle Like
+export const toggleLike = async (req, res) => {
+  try {
+    const userId = req.user?.id || req.user?._id;
+    const post = await Post.findById(req.params.id);
+    if (!post) return res.status(404).send({ success: false, message: "Post not found" });
+
+    const isLiked = post.likes.includes(userId);
+    if (isLiked) {
+      post.likes = post.likes.filter(id => id.toString() !== userId.toString());
+    } else {
+      post.likes.push(userId);
+    }
+    
+    await post.save();
+    res.status(200).send({ success: true, likes: post.likes.length });
+  } catch (error) {
+    res.status(500).send({ success: false, message: "Error liking post" });
+  }
+};
+
+// Add a comment
+export const addComment = async (req, res) => {
+  try {
+    const authorId = req.user?.id || req.user?._id;
+    const { text } = req.body;
+    const newComment = await Comment.create({ post: req.params.postId, author: authorId, text });
+    
+    const populatedComment = await newComment.populate("author", "username avatar");
+    res.status(201).send({ success: true, comment: populatedComment });
+  } catch (error) {
+    res.status(500).send({ success: false, message: "Error adding comment" });
+  }
+};
+
+// Get comments for a post
+export const getComments = async (req, res) => {
+  try {
+    const comments = await Comment.find({ post: req.params.postId })
+      .populate("author", "username avatar")
+      .sort({ createdAt: 1 });
+    res.status(200).send({ success: true, comments });
+  } catch (error) {
+    res.status(500).send({ success: false, message: "Error fetching comments" });
+  }
+};
+</file>
+
+<file path="controllers/package.controller.js">
+import Package from "../models/package.model.js";
+
+// 1. Create a new package (Enhanced to capture agency reference)
+export const createPackage = async (req, res) => {
+  try {
+    let packageImages = [];
+    
+    if (req.files && req.files.length > 0) {
+      packageImages = req.files.map((file) => file.filename);
+    }
+
+    // Capture user/agency ID from auth middleware (req.user) or request body fallback
+    const creatorId = req.user?.id || req.user?._id || req.body.agencyId || req.body.userRef;
+
+    const newPackage = await Package.create({
+      ...req.body,
+      packageImages,
+      agencyId: creatorId,
+      userRef: creatorId,
+    });
+
+    res.status(201).send({
+      success: true,
+      message: "Package created successfully!",
+      package: newPackage,
+    });
+  } catch (error) {
+    console.error("Error creating package:", error);
+    res.status(500).send({ success: false, message: "Server error while creating package" });
+  }
+};
+
+// 2. Update an existing package
+export const updatePackage = async (req, res) => {
+  try {
+    if (!req.params.id || req.params.id === "undefined") {
+      return res.status(400).send({ success: false, message: "Invalid Package ID" });
+    }
+
+    let updatedFields = { ...req.body };
+
+    if (req.files && req.files.length > 0) {
+      updatedFields.packageImages = req.files.map((file) => file.filename);
+    }
+
+    const updatedPackage = await Package.findByIdAndUpdate(
+      req.params.id,
+      { $set: updatedFields },
+      { new: true }
+    );
+
+    if (!updatedPackage) {
+      return res.status(404).send({ success: false, message: "Package not found!" });
+    }
+
+    res.status(200).send({
+      success: true,
+      message: "Package updated successfully!",
+      package: updatedPackage,
+    });
+  } catch (error) {
+    console.error("Error updating package:", error);
+    res.status(500).send({ success: false, message: "Server error while updating package" });
+  }
+};
+
+// 3. Delete a package
+export const deletePackage = async (req, res) => {
+  try {
+    if (!req.params.id || req.params.id === "undefined") {
+      return res.status(400).send({ success: false, message: "Invalid Package ID" });
+    }
+
+    const deletedPackage = await Package.findByIdAndDelete(req.params.id);
+    
+    if (!deletedPackage) {
+      return res.status(404).send({ success: false, message: "Package not found!" });
+    }
+
+    res.status(200).send({ success: true, message: "Package deleted successfully!" });
+  } catch (error) {
+    console.error("Error deleting package:", error);
+    res.status(500).send({ success: false, message: "Server error while deleting package" });
+  }
+};
+
+// 4. Get all packages (Supports filtering by agencyId if requested)
+export const getPackages = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 0;
+    const searchTerm = req.query.searchTerm || "";
+    const agencyIdFilter = req.query.agencyId;
+
+    let query = {
+      $or: [
+        { packageName: { $regex: searchTerm, $options: "i" } },
+        { packageDestination: { $regex: searchTerm, $options: "i" } }
+      ]
+    };
+
+    if (agencyIdFilter) {
+      query.agencyId = agencyIdFilter;
+    }
+
+    const packages = await Package.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit);
+
+    res.status(200).send({
+      success: true,
+      packages,
+    });
+  } catch (error) {
+    console.error("Error fetching packages:", error);
+    res.status(500).send({ success: false, message: "Server error fetching packages" });
+  }
+};
+
+// 5. Get single package data
+export const getPackageData = async (req, res) => {
+  try {
+    if (!req.params.id || req.params.id === "undefined") {
+      return res.status(400).send({ success: false, message: "Invalid Package ID" });
+    }
+
+    const packageData = await Package.findById(req.params.id);
+
+    if (!packageData) {
+      return res.status(404).send({ success: false, message: "Package not found!" });
+    }
+
+    res.status(200).send({
+      success: true,
+      packageData,
+    });
+  } catch (error) {
+    console.error("Error in getPackageData:", error);
+    res.status(500).send({ success: false, message: "Server error fetching package details" });
+  }
+};
+</file>
+
+<file path="controllers/payment.controller.js">
+import axios from "axios";
+import Booking from "../models/booking.model.js";
+
+const BKASH_APP_KEY = "4f6o0cjiki2rfm34kfdadl1eqq";
+const BKASH_APP_SECRET = "2is7hdktrekvrbljjh44ll3d9l1dtjo4pasmjvs5vl5qr3fug4b";
+const BKASH_USERNAME = "sandboxTokenizedUser02";
+const BKASH_PASSWORD = "sandboxTokenizedUser02@12345";
+const BKASH_BASE_URL = "https://tokenized.sandbox.bka.sh/v1.2.0-beta";
+
+// Helper: Authenticate with bKash and retrieve token
+const getBkashToken = async () => {
+  try {
+    const response = await axios.post(
+      `${BKASH_BASE_URL}/tokenized/checkout/token/grant`,
+      { app_key: BKASH_APP_KEY, app_secret: BKASH_APP_SECRET },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          accept: "application/json",
+          username: BKASH_USERNAME,
+          password: BKASH_PASSWORD,
+        },
+      }
+    );
+    return response.data.id_token;
+  } catch (error) {
+    console.error("bKash Token Auth Failed:", error.response?.data || error.message);
+    throw new Error("bKash Authentication Failed");
+  }
+};
+
+// 1. Create Payment & Generate bKash Gateway URL
+export const paymentController = async (req, res) => {
+  try {
+    const { amount, packageId, buyerId, date, persons } = req.body;
+
+    if (!amount || !packageId || !buyerId || !date) {
+      return res.status(400).send({ success: false, message: "Missing required booking details for payment." });
+    }
+
+    // Use schema-compliant values ("Booked" instead of "Pending") to bypass enum validation errors
+    const newBooking = await Booking.create({
+      packageId: packageId,
+      packageDetails: packageId,
+      userId: buyerId,
+      buyer: buyerId,
+      travelDate: date,
+      date: date,
+      travelersCount: Number(persons || 1),
+      persons: Number(persons || 1),
+      totalPrice: Number(amount),
+      status: "Booked",
+      bookingStatus: "Confirmed",
+      paymentStatus: "Pending"
+    });
+
+    const token = await getBkashToken();
+    const formattedAmount = Number(amount).toFixed(2);
+
+    const response = await axios.post(
+      `${BKASH_BASE_URL}/tokenized/checkout/create`,
+      {
+        mode: "0011",
+        payerReference: "1",
+        callbackURL: "https://travelease-backend-mwq0.onrender.com/api/payment/bkash/callback",
+        amount: formattedAmount,
+        currency: "BDT",
+        intent: "sale",
+        merchantInvoiceNumber: newBooking._id.toString(),
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          accept: "application/json",
+          authorization: token,
+          "x-app-key": BKASH_APP_KEY,
+        },
+      }
+    );
+
+    const data = response.data;
+
+    if (data && data.bkashURL) {
+      return res.status(200).send({
+        success: true,
+        bkashURL: data.bkashURL,
+      });
+    } else {
+      await Booking.findByIdAndDelete(newBooking._id);
+      return res.status(500).send({
+        success: false,
+        message: data?.statusMessage || "bKash Gateway failed to return URL.",
+      });
+    }
+  } catch (error) {
+    console.error("bKash Create Controller Error:", error.response?.data || error.message);
+    return res.status(500).send({
+      success: false,
+      message: error.response?.data?.statusMessage || "Server error while initializing bKash payment.",
+    });
+  }
+};
+
+// 2. Execute Payment Callback
+export const bkashCallback = async (req, res) => {
+  try {
+    const { paymentID, status } = req.query;
+
+    if (status === "cancel" || status === "failure") {
+      return res.redirect("http://localhost:5174/profile?payment=failed");
+    }
+
+    if (status === "success") {
+      const token = await getBkashToken();
+
+      const response = await axios.post(
+        `${BKASH_BASE_URL}/tokenized/checkout/execute`,
+        { paymentID },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            accept: "application/json",
+            authorization: token,
+            "x-app-key": BKASH_APP_KEY,
+          },
+        }
+      );
+
+      const data = response.data;
+
+      if (data && (data.statusCode === "0000" || data.transactionStatus === "Completed")) {
+        const invoiceId = data.merchantInvoiceNumber;
+        
+        if (invoiceId) {
+          await Booking.findByIdAndUpdate(invoiceId, {
+            status: "Booked",
+            bookingStatus: "Confirmed",
+            paymentStatus: "Paid",
+            transactionId: data.trxID
+          });
+        }
+
+        return res.redirect("http://localhost:5173/profile?payment=success");
+      } else {
+        return res.redirect("http://localhost:5174/profile?payment=failed");
+      }
+    } else {
+      return res.redirect("http://localhost:5174/profile?payment=cancelled");
+    }
+  } catch (error) {
+    console.error("bKash Execute Callback Error:", error.response?.data || error.message);
+    return res.redirect("http://localhost:5174/profile?payment=error");
+  }
+};
+</file>
+
+<file path="controllers/rating.controller.js">
+import Package from "../models/package.model.js";
+import RatingReview from "../models/ratings_reviews.model.js";
+
+export const giveRating = async (req, res) => {
+  if (req.user.id !== req.body.userRef) {
+    return res.status(401).send({
+      success: false,
+      message: "You can only give rating on your own account!",
+    });
+  }
+  try {
+    const newRating = await RatingReview.create(req.body);
+    if (newRating) {
+      const ratings = await RatingReview.find({
+        packageId: req.body.packageId,
+      });
+
+      let totalRatings = await ratings.length;
+      let totalStars = 0;
+      await ratings.map((rating) => {
+        totalStars += rating.rating;
+      });
+      let average_rating =
+        (await Math.round((totalStars / totalRatings) * 10)) / 10;
+      // console.log("total ratings: " + totalRatings);
+      // console.log("total stars: " + totalStars);
+      // console.log("average: " + average_rating);
+
+      const setPackageRatings = await Package.findByIdAndUpdate(
+        req.body.packageId,
+        {
+          $set: {
+            packageRating: average_rating,
+            packageTotalRatings: totalRatings,
+          },
+        },
+        { new: true }
+      );
+
+      // console.log(setPackageRatings);
+
+      if (setPackageRatings) {
+        return res.status(201).send({
+          success: true,
+          message: "Thanks for your feedback!",
+        });
+      } else {
+        return res.status(500).send({
+          success: false,
+          message: "Soemthing went wrong while rating to package!",
+        });
+      }
+    } else {
+      return res.status(500).send({
+        success: false,
+        message: "Soemthing went wrong",
+      });
+    }
+  } catch (error) {
+    console.log(error);
+  }
+};
+
+export const ratingGiven = async (req, res) => {
+  try {
+    const rating_given = await RatingReview.findOne({
+      userRef: req?.params?.userId,
+      packageId: req?.params?.packageId,
+    });
+    if (rating_given) {
+      return res.status(200).send({
+        given: true,
+      });
+    } else {
+      return res.status(200).send({
+        given: false,
+      });
+    }
+  } catch (error) {
+    console.log(error);
+  }
+};
+
+export const averageRating = async (req, res) => {
+  try {
+    const ratings = await RatingReview.find({ packageId: req?.params?.id });
+    let totalStars = 0;
+    await ratings.map((rating) => {
+      totalStars += rating.rating;
+    });
+    let average = Math.round((totalStars / ratings.length) * 10) / 10;
+    if (ratings.length) {
+      res.status(200).send({
+        rating: average,
+        totalRatings: ratings.length,
+      });
+    } else {
+      res.status(200).send({
+        rating: 0,
+        totalRatings: 0,
+      });
+    }
+  } catch (error) {
+    console.log(error);
+  }
+};
+
+export const getAllRatings = async (req, res) => {
+  try {
+    const ratings = await RatingReview.find({
+      packageId: req?.params?.id,
+    })
+      .limit(req?.params?.limit)
+      .sort({ createdAt: -1 });
+    if (ratings) {
+      return res.send(ratings);
+    } else {
+      return res.send("N/A");
+    }
+  } catch (error) {
+    console.log(error);
+  }
+};
+</file>
+
+<file path="controllers/service.controller.js">
+import Hotel from "../models/hotel.model.js";
+import Transportation from "../models/transportation.model.js";
+import Guide from "../models/guide.model.js";
+
+const getModel = (type) => {
+  if (type === "hotel") return Hotel;
+  if (type === "transportation") return Transportation;
+  if (type === "guide") return Guide;
+  throw new Error("Invalid service type");
+};
+
+export const createService = async (req, res) => {
+  try {
+    const { type } = req.params; // 'hotel', 'transportation', or 'guide'
+    const Model = getModel(type);
+    
+    let images = [];
+    if (req.files && req.files.length > 0) {
+      images = req.files.map((file) => file.filename);
+    }
+
+    const creatorId = req.user?.id || req.user?._id;
+
+    const newService = await Model.create({
+      ...req.body,
+      images,
+      agencyId: creatorId,
+    });
+
+    res.status(201).send({ success: true, message: `${type} created successfully!`, data: newService });
+  } catch (error) {
+    console.error(`Error creating ${req.params.type}:`, error);
+    res.status(500).send({ success: false, message: `Server error creating ${req.params.type}` });
+  }
+};
+
+export const getServices = async (req, res) => {
+  try {
+    const { type } = req.params;
+    const Model = getModel(type);
+    
+    const limit = parseInt(req.query.limit) || 0;
+    const location = req.query.location || "";
+    const agencyId = req.query.agencyId;
+
+    let query = {};
+    
+    // Support searching by location (critical for AI image integration)
+    if (location) {
+      query.$or = [
+        { location: { $regex: location,$options: "i" } },
+        { arrivalLocation: { $regex: location,$options: "i" } } // For transportation
+      ];
+    }
+    
+    if (agencyId) {
+      query.agencyId = agencyId;
+    }
+
+    const services = await Model.find(query).sort({ createdAt: -1 }).limit(limit);
+    res.status(200).send({ success: true, data: services });
+  } catch (error) {
+    res.status(500).send({ success: false, message: "Error fetching services" });
+  }
+};
+</file>
+
+<file path="controllers/user.controller.js">
+import User from "../models/user.model.js";
+import bcryptjs from "bcryptjs";
+
+// Update user details & Avatar
+export const updateUser = async (req, res) => {
+  // Fortified auth check to handle both string and ObjectId token structures
+  const authId = req.user?.id || req.user?._id;
+  if (String(authId) !== String(req.params.id)) {
+    return res.status(401).send({
+      success: false,
+      message: "You can only update your own account. Please login again!",
+    });
+  }
+
+  try {
+    const updatedFields = {
+      username: req.body.username,
+      email: req.body.email,
+      address: req.body.address,
+      phone: req.body.phone,
+    };
+
+    // If multer successfully intercepted the upload, attach the filename
+    if (req.file) {
+      updatedFields.avatar = req.file.filename; 
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.params.id,
+      { $set: updatedFields },
+      { new: true }
+    );
+
+    const { password: pass, ...rest } = updatedUser._doc || updatedUser;
+
+    res.status(201).send({
+      success: true,
+      message: "User Details Updated Successfully",
+      user: rest,
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).send({
+        success: false, // Fixed: This was previously true in your code, which tricked the frontend
+        message: "Email already taken!",
+      });
+    }
+
+    console.error(error);
+    res.status(500).send({
+      success: false,
+      message: "Something went wrong while updating user",
+    });
+  }
+};
+
+// update user password
+export const updateUserPassword = async (req, res) => {
+  try {
+    const authId = req.user?.id || req.user?._id;
+    if (String(authId) !== String(req.params.id)) {
+      return res.status(401).send({
+        success: false,
+        message: "You can only update your own account password. Please login again!",
+      });
+    }
+
+    const validUser = await User.findById(req.params.id);
+
+    if (!validUser) {
+      return res.status(404).send({ success: false, message: "User Not Found!" });
+    }
+
+    const oldPassword = req.body.oldpassword;
+    const newPassword = req.body.newpassword;
+
+    const validPassword = bcryptjs.compareSync(oldPassword, validUser.password);
+    if (!validPassword) {
+      return res.status(400).send({ success: false, message: "Invalid old password" });
+    }
+
+    const updatedHashedPassword = bcryptjs.hashSync(newPassword, 10);
+    await User.findByIdAndUpdate(
+      req.params.id,
+      { $set: { password: updatedHashedPassword } },
+      { new: true }
+    );
+
+    return res.status(201).send({
+      success: true,
+      message: "Password Updated Successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ success: false, message: "Server error" });
+  }
+};
+
+// delete user
+export const deleteUserAccount = async (req, res, next) => {
+  const authId = req.user?.id || req.user?._id;
+  if (String(authId) !== String(req.params.id)) {
+    return res.status(401).send({ success: false, message: "You can only delete your account!" });
+  }
+  
+  try {
+    await User.findByIdAndDelete(req.params.id);
+    res.clearCookie("access_token"); 
+    res.status(200).send({ success: true, message: "User account has been deleted!" });
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+// get all users admin
+export const getAllUsers = async (req, res) => {
+  try {
+    const searchTerm = req.query.searchTerm || "";
+    const users = await User.find({
+      user_role: 0,
+      $or: [
+        { username: { $regex: searchTerm, $options: "i" } },
+        { email: { $regex: searchTerm, $options: "i" } },
+        { phone: { $regex: searchTerm, $options: "i" } },
+      ],
+    });
+    if (users && users.length > 0) {
+      res.send(users);
+    } else {
+      res.status(200).send({ success: false, message: "No Users Yet!" });
+    }
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+// delete user admin
+export const deleteUserAccountAdmin = async (req, res, next) => {
+  try {
+    await User.findByIdAndDelete(req?.params?.id);
+    res.status(200).send({ success: true, message: "User account has been deleted!" });
+  } catch (error) {
+    console.error(error);
+  }
+};
+</file>
+
+<file path="models/booking.model.js">
+import mongoose from "mongoose";
+
+const bookingSchema = new mongoose.Schema(
+  {
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    buyer: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, 
+    
+    // --- NEW FIELDS FOR STANDALONE SERVICES ---
+    itemType: { 
+      type: String, 
+      enum: ["Package", "Hotel", "Transportation", "Guide"], 
+      default: "Package" 
+    },
+    serviceId: { type: mongoose.Schema.Types.ObjectId, refPath: 'itemType' }, 
+    serviceName: { type: String }, // Easy reference for the agency dashboard
+
+    // --- LEGACY PACKAGE FIELDS (Made optional so standalone services don't crash) ---
+    packageId: { type: mongoose.Schema.Types.ObjectId, ref: "Package" },
+    packageDetails: { type: mongoose.Schema.Types.ObjectId, ref: "Package" },
+    
+    travelDate: { type: Date, required: true },
+    date: { type: Date }, 
+    travelersCount: { type: Number, default: 1 },
+    persons: { type: Number, default: 1 }, 
+    totalPrice: { type: Number, required: true },
+    
+    status: { type: String, default: "Booked" },
+    bookingStatus: { type: String, default: "Confirmed" },
+    paymentStatus: { type: String, default: "Paid" },
+    cancellationReason: { type: String, default: "" }
+  },
+  { timestamps: true }
+);
+
+export default mongoose.model("Booking", bookingSchema);
+</file>
+
+<file path="models/comment.model.js">
+import mongoose from "mongoose";
+
+const commentSchema = new mongoose.Schema(
+  {
+    post: { type: mongoose.Schema.Types.ObjectId, ref: "Post", required: true },
+    author: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    text: { type: String, required: true }
+  },
+  { timestamps: true }
+);
+
+export default mongoose.model("Comment", commentSchema);
+</file>
+
+<file path="models/guide.model.js">
+import mongoose from "mongoose";
+
+const guideSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    location: { type: String, required: true, index: true },
+    expertise: { type: String, required: true }, // e.g., Historical Tours, Trekking
+    languages: { type: [String], required: true }, // e.g., English, Bengali
+    pricePerDay: { type: Number, required: true },
+    contactNumber: { type: String, required: true },
+    images: { type: [String], default: ["default-guide.jpg"] },
+    rating: { type: Number, default: 5 },
+    agencyId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
+  },
+  { timestamps: true }
+);
+
+export default mongoose.model("Guide", guideSchema);
+</file>
+
+<file path="models/hotel.model.js">
+import mongoose from "mongoose";
+
+const hotelSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    location: { type: String, required: true, index: true }, // Essential for AI Image Search matching
+    description: { type: String, required: true },
+    pricePerNight: { type: Number, required: true },
+    roomType: { type: String, default: "Standard" },
+    amenities: { type: [String], default: ["WiFi", "AC", "Breakfast"] },
+    images: { type: [String], default: ["default-hotel.jpg"] },
+    rating: { type: Number, default: 5 },
+    totalRatings: { type: Number, default: 0 },
+    agencyId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
+  },
+  { timestamps: true }
+);
+
+export default mongoose.model("Hotel", hotelSchema);
+</file>
+
+<file path="models/package.model.js">
+import mongoose from "mongoose";
+
+const packageSchema = new mongoose.Schema(
+  {
+    packageName: {
+      type: String,
+      required: true,
+    },
+    // Unified destination field (Critical for AI Visual Destination Discovery)
+    packageDestination: {
+      type: String,
+      required: true,
+      index: true,
+    },
+    // Made optional to prevent backend crashes, but kept for advanced AI search filtering
+    placeName: {
+      type: String,
+      default: "",
+    },
+    district: {
+      type: String,
+      default: "",
+    },
+    packageDescription: {
+      type: String,
+      required: true,
+    },
+    packageDays: {
+      type: Number,
+      default: 3,
+    },
+    packageNights: {
+      type: Number,
+      default: 2,
+    },
+    packageAccommodation: {
+      type: String,
+      default: "Hotel / Eco Resort",
+    },
+    packageTransportation: {
+      type: String,
+      default: "AC Bus / Local Transport",
+    },
+    packageMeals: {
+      type: String,
+      default: "Breakfast & Dinner Included",
+    },
+    packageActivities: {
+      type: String,
+      default: "Sightseeing, Guided Tour, Photography",
+    },
+    packagePrice: {
+      type: Number,
+      required: true,
+    },
+    packageDiscountPrice: {
+      type: Number,
+      default: 0,
+    },
+    packageOffer: {
+      type: Boolean,
+      default: false,
+    },
+    packageImages: {
+      type: [String],
+      default: ["default-travel.jpg"],
+    },
+    packageRating: {
+      type: Number,
+      default: 5,
+    },
+    packageTotalRatings: {
+      type: Number,
+      default: 0,
+    },
+    
+    // --- AGENCY & ADMIN RELATIONSHIPS (Feature 6 Requirement) ---
+    agencyName: {
+      type: String,
+      default: "TravelEase Official",
+    },
+    agencyId: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: "User",
+      index: true 
+    },
+    userRef: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: "User" 
+    },
+  },
+  { timestamps: true }
+);
+
+export default mongoose.model("Package", packageSchema);
+</file>
+
+<file path="models/post.model.js">
+import mongoose from "mongoose";
+
+const postSchema = new mongoose.Schema(
+  {
+    author: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    type: { type: String, enum: ["Diary", "PartnerRequest"], default: "Diary" },
+    title: { type: String, required: true },
+    content: { type: String, required: true },
+    destination: { type: String, index: true },
+    image: { type: String }, 
+    likes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }]
+  },
+  { timestamps: true }
+);
+
+export default mongoose.model("Post", postSchema);
+</file>
+
+<file path="models/ratings_reviews.model.js">
+import mongoose from "mongoose";
+
+const ratingsReviewsSchema = new mongoose.Schema(
+  {
+    rating: {
+      type: Number,
+    },
+    review: {
+      type: String,
+    },
+    packageId: {
+      type: String,
+      required: true,
+    },
+    userRef: {
+      type: String,
+      required: true,
+    },
+    username: {
+      type: String,
+      required: true,
+    },
+    userProfileImg: {
+      type: String,
+      default:
+        "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_960_720.png",
+    },
+  },
+  { timestamps: true }
+);
+
+const RatingReview = mongoose.model("RatingReview", ratingsReviewsSchema);
+
+export default RatingReview;
+</file>
+
+<file path="models/transportation.model.js">
+import mongoose from "mongoose";
+
+const transportationSchema = new mongoose.Schema(
+  {
+    operatorName: { type: String, required: true }, // e.g., Green Line, NovoAir
+    vehicleType: { type: String, required: true }, // Bus, Flight, Train, Boat
+    departureLocation: { type: String, required: true, index: true },
+    arrivalLocation: { type: String, required: true, index: true },
+    departureTime: { type: Date, required: true },
+    price: { type: Number, required: true },
+    features: { type: [String], default: ["AC"] },
+    images: { type: [String], default: ["default-transport.jpg"] },
+    agencyId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
+  },
+  { timestamps: true }
+);
+
+export default mongoose.model("Transportation", transportationSchema);
+</file>
+
+<file path="models/user.model.js">
+import mongoose from "mongoose";
+
+const userSchema = new mongoose.Schema(
+  {
+    username: { type: String, required: true },
+    email: { type: String, unique: true, required: true },
+    password: { type: String, required: true },
+    address: { type: String, required: true },
+    phone: { type: String, required: true },
+    avatar: {
+      type: String,
+      default:
+        "https://firebasestorage.googleapis.com/v0/b/mern-travel-tourism.appspot.com/o/profile-photos%2F1706415975072defaultProfileImgttms125.png?alt=media&token=7f309b9e-7ccf-4a15-ba5c-829c9952a85c",
+    },
+    user_role: { type: Number, default: 0 },
+    
+    // --- NEW: Community & Matchmaking Fields ---
+    bio: { type: String, default: "" },
+    travelInterests: { type: [String], default: [] },
+    lookingForPartner: { type: Boolean, default: false },
+
+    // --- Agency-specific fields ---
+    agencyName: { type: String, default: "" },
+    businessLicense: { type: String, default: "" },
+    isVerifiedAgency: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+
+const User = mongoose.model("User", userSchema);
+export default User;
+</file>
+
+<file path="routes/admin.route.js">
+import express from "express";
+import { isAdmin, requireSignIn } from "../middlewares/authMiddleware.js";
+import { getAllUsers, updateUserRole, getAdminStats } from "../controllers/admin.controller.js";
+
+const router = express.Router();
+
+// All routes require sign-in AND admin privileges
+router.get("/users", requireSignIn, isAdmin, getAllUsers);
+router.put("/update-role/:userId", requireSignIn, isAdmin, updateUserRole);
+router.get("/stats", requireSignIn, isAdmin, getAdminStats);
+
+export default router;
+</file>
+
+<file path="routes/ai.route.js">
+import express from "express";
+import { analyzeDestinationImage } from "../controllers/ai.controller.js";
+import upload from "../middlewares/multer.js"; 
+
+const router = express.Router();
+
+// Route: POST /api/ai/analyze
+router.post("/analyze", upload.single("image"), analyzeDestinationImage);
+
+export default router;
+</file>
+
+<file path="routes/auth.route.js">
+import express from "express";
+import {
+  logOutController,
+  loginController,
+  signupController,
+} from "../controllers/auth.controller.js";
+
+const router = express.Router();
+
+//signup route
+router.post("/signup", signupController);
+//login route
+router.post("/login", loginController);
+//logout route
+router.get("/logout", logOutController);
+
+export default router;
+</file>
+
+<file path="routes/booking.route.js">
+import express from "express";
+import {
+  bookPackage,
+  bookService,
+  cancelBooking,
+  deleteBookingHistory,
+  getAllBookings,
+  getAllUserBookings,
+  getCurrentBookings,
+  getUserCurrentBookings,
+  getAgencyBookings,
+} from "../controllers/booking.controller.js";
+import { isAdmin, requireSignIn } from "../middlewares/authMiddleware.js";
+
+const router = express.Router();
+
+// Support both frontend endpoints (legacy and new checkout flow)
+router.post("/create", requireSignIn, bookPackage);
+router.post("/book-package/:packageId", requireSignIn, bookPackage);
+
+// NEW: Book independent services
+router.post("/book-service", requireSignIn, bookService);
+
+// Get all current bookings admin
+router.get("/get-currentBookings", requireSignIn, isAdmin, getCurrentBookings);
+
+// Get all bookings admin
+router.get("/get-allBookings", requireSignIn, isAdmin, getAllBookings);
+
+// Get specific agency bookings (No isAdmin check required, just requireSignIn)
+router.get("/get-agency-bookings", requireSignIn, getAgencyBookings);
+
+// Get all current bookings by user id
+router.get("/get-UserCurrentBookings/:id", requireSignIn, getUserCurrentBookings);
+
+// Get all bookings by user id
+router.get("/get-allUserBookings/:id", requireSignIn, getAllUserBookings);
+
+// Delete history of booking
+router.delete("/delete-booking-history/:id/:userId", requireSignIn, deleteBookingHistory);
+
+// Cancel booking by id 
+router.post("/cancel-booking/:id/:userId", requireSignIn, cancelBooking);
+
+export default router;
+</file>
+
+<file path="routes/chatbot.route.js">
+import express from "express";
+import { askAI } from "../controllers/chatbot.controller.js";
+
+const router = express.Router();
+
+router.post("/ask", askAI);
+
+export default router;
+</file>
+
+<file path="routes/community.route.js">
+import express from "express";
+import { requireSignIn } from "../middlewares/authMiddleware.js";
+import { getPosts, createPost, toggleLike, addComment, getComments } from "../controllers/community.controller.js";
+import upload from "../middlewares/multer.js";
+
+const router = express.Router();
+
+router.get("/posts", getPosts);
+router.post("/posts/create", requireSignIn, upload.single("image"), createPost);
+router.put("/posts/:id/like", requireSignIn, toggleLike);
+router.get("/posts/:postId/comments", getComments);
+router.post("/posts/:postId/comments", requireSignIn, addComment);
+
+export default router;
+</file>
+
+<file path="routes/package.route.js">
+import express from "express";
+import { requireSignIn } from "../middlewares/authMiddleware.js";
+import {
+  createPackage,
+  deletePackage,
+  getPackageData,
+  getPackages,
+  updatePackage,
+} from "../controllers/package.controller.js";
+import upload from "../middlewares/multer.js";
+import User from "../models/user.model.js";
+
+const router = express.Router();
+
+// Custom Middleware: Allows either System Admin (1) or Partner Agency (2)
+const isAgencyOrAdmin = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?._id;
+    const user = await User.findById(userId);
+    
+    if (user && (user.user_role === 1 || user.user_role === 2)) {
+      next();
+    } else {
+      return res.status(403).send({
+        success: false,
+        message: "Unauthorized Access: Admin or Agency permission required",
+      });
+    }
+  } catch (error) {
+    console.error("Authorization Middleware Error:", error);
+    return res.status(500).send({ success: false, message: "Server error in authorization" });
+  }
+};
+
+// CRITICAL FIX: Maps Cloudinary URLs to filename so controllers don't need changes
+const mapCloudinaryUrls = (req, res, next) => {
+  if (req.files) {
+    req.files.forEach((file) => {
+      // file.path contains the live Cloudinary URL. We map it to filename
+      // so your MongoDB database saves the full link automatically.
+      file.filename = file.path; 
+    });
+  }
+  next();
+};
+
+// Create package (Admin or Agency)
+router.post(
+  "/create-package",
+  requireSignIn,
+  isAgencyOrAdmin,
+  upload.array("packageImages", 10),
+  mapCloudinaryUrls,
+  createPackage
+);
+
+// update package by id
+router.post(
+  "/update-package/:id",
+  requireSignIn,
+  isAgencyOrAdmin,
+  upload.array("packageImages", 10),
+  mapCloudinaryUrls,
+  updatePackage
+);
+
+// Delete package by id (Admin or Agency)
+router.delete("/delete-package/:id", requireSignIn, isAgencyOrAdmin, deletePackage);
+
+// Get all packages (Public)
+router.get("/get-packages", getPackages);
+
+// Get single package data by id (Public)
+router.get("/get-package-data/:id", getPackageData);
+
+export default router;
+</file>
+
+<file path="routes/payment.routes.js">
+import express from "express";
+import Booking from "../models/booking.model.js";
+
+const router = express.Router();
+
+const cleanEnv = (val) => val?.replace(/"/g, '')?.trim();
+
+const authenticateBkash = async () => {
+    try {
+        const response = await fetch(`${cleanEnv(process.env.BKASH_BASE_URL)}/tokenized/checkout/token/grant`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "username": cleanEnv(process.env.BKASH_USERNAME),
+                "password": cleanEnv(process.env.BKASH_PASSWORD),
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+            body: JSON.stringify({
+                app_key: cleanEnv(process.env.BKASH_APP_KEY),
+                app_secret: cleanEnv(process.env.BKASH_APP_SECRET),
+            })
+        });
+        
+        const responseText = await response.text();
+        
+        let data;
+        try {
+            data = JSON.parse(responseText);
+        } catch (e) {
+            console.error("bKash Raw Error (WAF Block):", responseText);
+            throw new Error(`bKash Firewall blocked the request. Raw response: ${responseText.substring(0, 50)}`);
+        }
+        
+        if (!response.ok || !data.id_token) {
+            throw new Error(`Auth Failed: ${data.statusMessage || response.statusText}`);
+        }
+        return data.id_token;
+    } catch (error) {
+        console.error("bKash Auth Error:", error.message);
+        throw new Error("bKash Authentication Failed");
+    }
+};
+
+router.post("/create-payment", async (req, res) => {
+    try {
+        const { amount, packageId, buyerId, date, persons } = req.body;
+        
+        const token = await authenticateBkash();
+
+        const response = await fetch(`${cleanEnv(process.env.BKASH_BASE_URL)}/tokenized/checkout/create`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "Authorization": token,
+                "X-APP-Key": cleanEnv(process.env.BKASH_APP_KEY),
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            },
+            body: JSON.stringify({
+                mode: "0011",
+                payerReference: buyerId.toString(),
+                callbackURL: `https://travelease-backend-mwq0.onrender.com/api/payment/bkash-callback?packageId=${packageId}&buyerId=${buyerId}&date=${date}&persons=${persons}&amount=${amount}`,
+                amount: amount.toString(),
+                currency: "BDT",
+                intent: "sale",
+                merchantInvoiceNumber: "Inv" + Date.now()
+            })
+        });
+
+        const responseText = await response.text();
+        let data;
+        try {
+            data = JSON.parse(responseText);
+        } catch (e) {
+            throw new Error("Invalid JSON in create response");
+        }
+
+        if (data && data.bkashURL) {
+            return res.status(200).json({ success: true, bkashURL: data.bkashURL });
+        } else {
+            return res.status(400).json({ success: false, message: data.statusMessage || "Failed to connect to bKash gateway" });
+        }
+    } catch (error) {
+        console.error("bKash Gateway Error:", error);
+        res.status(500).json({ success: false, message: "Payment connection failed." });
+    }
+});
+
+router.get("/bkash-callback", async (req, res) => {
+    const { paymentID, status, packageId, buyerId, date, persons, amount } = req.query;
+    
+    if (status === "success" || status === "0000") {
+        try {
+            const token = await authenticateBkash();
+            
+            const response = await fetch(`${cleanEnv(process.env.BKASH_BASE_URL)}/tokenized/checkout/execute`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "Authorization": token,
+                    "X-APP-Key": cleanEnv(process.env.BKASH_APP_KEY),
+                    "User-Agent": "Mozilla/5.0"
+                },
+                body: JSON.stringify({ paymentID })
+            });
+            
+            const data = await response.json();
+
+            if (data && (data.statusCode === "0000" || data.transactionStatus === "Completed")) {
+                const newBooking = new Booking({
+                    packageId,
+                    userId: buyerId, // PERFECT FIX: Fulfills strict Mongoose Schema requirement
+                    user: buyerId,
+                    buyerId,
+                    travelDate: date,
+                    date,
+                    persons,
+                    travelersCount: persons,
+                    totalPrice: amount,
+                    status: "Confirmed",
+                    paymentMethod: "bKash",
+                    transactionId: data.trxID
+                });
+                await newBooking.save();
+                
+                return res.redirect("http://localhost:5173/profile/user");
+            } else {
+                return res.redirect(`http://localhost:5173/booking/${packageId}?error=ExecuteFailed`);
+            }
+        } catch (error) {
+            console.error("bKash Execute Error:", error);
+            return res.redirect(`http://localhost:5173/booking/${packageId}?error=ExecutionError`);
+        }
+    } else {
+        return res.redirect(`http://localhost:5173/booking/${packageId}?error=${status}`);
+    }
+});
+
+// 4. MOCK CREDIT/DEBIT CARD PAYMENT (FOR DEFENSE DEMO)
+router.post("/dummy-card-payment", async (req, res) => {
+    try {
+        const { amount, packageId, buyerId, date, persons, cardNumber } = req.body;
+        
+        if (!cardNumber || cardNumber.replace(/\s/g, '').length < 15) {
+            return res.status(400).json({ success: false, message: "Please enter a valid 16-digit card number." });
+        }
+
+        const newBooking = new Booking({
+            packageId,
+            userId: buyerId, // PERFECT FIX: Fulfills strict Mongoose Schema requirement
+            user: buyerId,
+            buyerId,
+            travelDate: date,
+            date,
+            persons,
+            travelersCount: persons,
+            totalPrice: amount,
+            status: "Confirmed",
+            paymentMethod: "Credit/Debit Card",
+            transactionId: "TXN_CARD_" + Math.floor(Math.random() * 1000000000)
+        });
+
+        await newBooking.save();
+
+        return res.status(200).json({ success: true, message: "Card payment processed successfully!" });
+    } catch (error) {
+        console.error("Dummy Card Error:", error);
+        res.status(500).json({ success: false, message: "Card payment failed." });
+    }
+});
+
+export default router;
+</file>
+
+<file path="routes/rating.route.js">
+import express from "express";
+import { requireSignIn } from "../middlewares/authMiddleware.js";
+import {
+  averageRating,
+  getAllRatings,
+  giveRating,
+  ratingGiven,
+} from "../controllers/rating.controller.js";
+
+const router = express.Router();
+
+//create a rating/review
+router.post("/give-rating", requireSignIn, giveRating);
+
+//get average rating of package
+router.get("/average-rating/:id", averageRating);
+
+//check if rating given by user to a package
+router.get("/rating-given/:userId/:packageId", requireSignIn, ratingGiven);
+
+//get all ratings by package id
+router.get("/get-ratings/:id/:limit", getAllRatings);
+
+export default router;
+</file>
+
+<file path="routes/service.route.js">
+import express from "express";
+import { requireSignIn } from "../middlewares/authMiddleware.js";
+import { createService, getServices } from "../controllers/service.controller.js";
+import upload from "../middlewares/multer.js";
+import User from "../models/user.model.js";
+
+const router = express.Router();
+
+const isAgencyOrAdmin = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user?.id || req.user?._id);
+    if (user && (user.user_role === 1 || user.user_role === 2)) return next();
+    return res.status(403).send({ success: false, message: "Unauthorized Access" });
+  } catch (error) {
+    return res.status(500).send({ success: false, message: "Server error" });
+  }
+};
+
+// Routes expect the parameter :type (e.g., /api/services/hotel/create)
+router.post("/:type/create", requireSignIn, isAgencyOrAdmin, upload.array("images", 5), createService);
+router.get("/:type/list", getServices);
+
+export default router;
+</file>
+
+<file path="routes/user.route.js">
+import express from "express";
+import {
+  deleteUserAccount,
+  deleteUserAccountAdmin,
+  getAllUsers,
+  updateUser,
+  updateUserPassword,
+} from "../controllers/user.controller.js";
+import { isAdmin, requireSignIn } from "../middlewares/authMiddleware.js";
+import upload from "../middlewares/multer.js";
+const router = express.Router();
+
+// CRITICAL FIX: Maps Cloudinary URL to filename for Avatar updates
+const mapCloudinaryUrl = (req, res, next) => {
+  if (req.file) {
+    req.file.filename = req.file.path; // Replace filename with the live Cloudinary URL
+  }
+  next();
+};
+
+//user auth
+router.get("/user-auth", requireSignIn, (req, res) => {
+  return res.status(200).send({ check: true });
+});
+
+//admin auth
+router.get("/admin-auth", requireSignIn, isAdmin, (req, res) => {
+  res.status(200).send({ check: true });
+});
+
+//update user details
+router.post("/update/:id", requireSignIn, upload.single("avatar"), mapCloudinaryUrl, updateUser);
+
+//update user password
+router.post("/update-password/:id", requireSignIn, updateUserPassword);
+
+//delete user account
+router.delete("/delete/:id", requireSignIn, deleteUserAccount);
+
+//get all users
+router.get("/getAllUsers", requireSignIn, isAdmin, getAllUsers);
+
+//admin delete user accounts
+router.delete(
+  "/delete-user/:id",
+  requireSignIn,
+  isAdmin,
+  deleteUserAccountAdmin
+);
+
+export default router;
+</file>
+
+</files>
