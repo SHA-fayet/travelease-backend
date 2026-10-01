@@ -14,10 +14,16 @@ export const analyzeDestinationImage = async (req, res) => {
     const formData = new FormData();
     formData.append("file", fs.createReadStream(req.file.path));
 
-    const aiResponse = await fetch("http://127.0.0.1:7860/predict", {
+    // 🔴 REPLACE THIS URL WITH YOUR ACTIVE NGROK LINK 🔴
+    const NGROK_URL = "https://defense-virtuous-diligence.ngrok-free.dev/predict";
+
+    const aiResponse = await fetch(NGROK_URL, {
       method: "POST",
       body: formData,
-      headers: formData.getHeaders()
+      headers: {
+        ...formData.getHeaders(),
+        "ngrok-skip-browser-warning": "true" // Prevents ngrok from blocking the API call
+      }
     });
 
     if (!aiResponse.ok) {
@@ -49,7 +55,7 @@ export const analyzeDestinationImage = async (req, res) => {
 
     res.status(200).send({
       success: true,
-      location: cleanLocation, // Sends "Sajek Valley" instead of "Sajek_Valley"
+      location: cleanLocation,
       confidence: aiData.confidence || 0.95,
       data: {
         packages,
